@@ -153,6 +153,25 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
         title: const Text('Uploader Galeri'),
         actions: [
           IconButton(
+            tooltip: 'Tentang Sam Connected',
+            icon: const Icon(Icons.info_outline_rounded),
+            onPressed: () {
+              showAboutDialog(
+                context: context,
+                applicationName: 'Sam Connected',
+                applicationVersion: 'v1.0.0',
+                applicationIcon: const Icon(Icons.cloud_sync_rounded, size: 48, color: Colors.blue),
+                applicationLegalese: 'Hak Cipta © 2026 Sam Connected.\nDikembangkan oleh Sam Tigis.',
+                children: [
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Solusi pencadangan foto & video otomatis lokal berkecepatan tinggi tanpa cloud publik. Mengubah PC/laptop Anda menjadi private storage mandiri di jaringan Wi-Fi rumah.',
+                  ),
+                ],
+              );
+            },
+          ),
+          IconButton(
             tooltip: 'Ubah Peran (Ganti ke Mode Server)',
             icon: const Icon(Icons.swap_horiz_rounded),
             onPressed: _switchRole,

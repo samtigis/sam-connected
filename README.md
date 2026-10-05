@@ -110,5 +110,44 @@ GOOS=linux GOARCH=amd64 go build -o ../client/assets/bin/server_linux ./cmd/api
 
 ---
 
+## 💡 Tentang Sam Connected (About)
+
+### 🌟 Latar Belakang & Filosofi
+Di era digital saat ini, kamera smartphone menghasilkan ribuan foto dan video beresolusi tinggi (4K/ProRes) yang cepat memenuhi memori perangkat. Solusi cloud komersial (seperti Google Photos, Apple iCloud, atau Dropbox) menghadirkan tantangan:
+- **Biaya Langganan Bulanan**: Biaya storage terus membengkak seiring bertambahnya koleksi foto keluarga Anda.
+- **Kekhawatiran Privasi**: Foto dan kenangan pribadi tersimpan di server pihak ketiga yang rentan pemindaian data atau kebocoran privasi.
+- **Keterbatasan Bandwidth Internet**: Mengunggah video puluhan gigabyte melalui internet publik lambat dan memakan kuota.
+
+**Sam Connected** hadir sebagai solusi **Local-First & Self-Hosted Photo Backup** yang mengubah laptop atau PC rumah Anda (MacBook, Windows, atau Mini PC) menjadi *private cloud storage* mandiri.
+
+---
+
+### ✨ Keunggulan Utama
+
+- **🚀 Kecepatan Penuh Jaringan Lokal (LAN / Wi-Fi 6)**: Pencadangan berjalan melalui jalur Wi-Fi lokal berkecepatan tinggi tanpa bergantung pada kecepatan upload internet ISP.
+- **🔒 100% Privasi & Tanpa Biaya Langganan**: Foto dan video Anda tidak pernah meninggalkan rumah Anda. Tidak ada biaya bulanan, cukup gunakan harddisk atau SSD yang Anda miliki.
+- **🧠 Deduplikasi Cerdas (Streaming SHA-256 Preflight)**: Setiap foto diperiksa hash-nya terlebih dahulu. Jika file sudah pernah dicadangkan, file tidak akan diunggah ulang—menghemat waktu, baterai, dan ruang harddisk.
+- **🌐 Zero-Configuration Discovery (mDNS Zeroconf)**: Begitu aplikasi dibuka di HP, server MacBook/PC Anda akan otomatis terdeteksi via protokol `_photobackup._tcp` tanpa perlu repot mengetik IP manual.
+- **📂 Struktur File Rapi & Tanpa Vendor Lock-In**:
+  File disimpan dalam struktur hierarki yang bersih:
+  ```text
+  storage/
+  └── {device_id}/
+      └── {YYYY}/
+          └── {MM}/
+              ├── {sha256_hash}.jpg
+              └── {sha256_hash}.mp4
+  ```
+  Anda dapat membuka, menyalin, dan memindahkan foto langsung dari Finder atau Windows Explorer kapan saja tanpa aplikasi khusus.
+- **🖼️ Auto-Generated Thumbnail & EXIF Parsing**: Server Go secara otomatis membuat thumbnail optimal dan membaca metadata tanggal pengambilan foto dari tag EXIF.
+
+---
+
+## 👨‍💻 Kontributor & Pengembang
+- **Pengembang**: Sam Tigis ([@samtigis](https://github.com/samtigis))
+- **Proyek**: Sam Connected Local Auto-Backup System
+
+---
+
 ## 📄 Lisensi
-Hak Cipta © 2026 Sam Connected.
+Hak Cipta © 2026 Sam Connected. Dilindungi undang-undang.
