@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
 
 class SmartHasher {
@@ -23,15 +22,8 @@ class SmartHasher {
 
   /// Full file streaming SHA-256 calculation (memory efficient)
   static Future<String> _computeFullStreamHash(File file) async {
-    final output = AccumulatorSink<Digest>();
-    final input = sha256.startChunkedConversion(output);
-
-    await for (final chunk in file.openRead()) {
-      input.add(chunk);
-    }
-    input.close();
-
-    return output.events.single.toString();
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
   }
 
   /// Battery-efficient hash for heavy videos:
@@ -39,27 +31,26 @@ class SmartHasher {
   static Future<String> _computePowerSavingHash(File file, int fileSize) async {
     final RandomAccessFile raf = await file.open(mode: FileMode.read);
     try {
-      final output = AccumulatorSink<Digest>();
-      final input = sha256.startChunkedConversion(output);
+      final List<int> bytesToHash = [];
 
       // 1. Add file size prefix
-      input.add(utf8.encode('fastvideo:$fileSize:'));
+      bytesToHash.addAll(utf8.encode('fastvideo:$fileSize:'));
 
       // 2. Read first 64KB
       final int firstReadSize = fileSize < sampleBlockSize ? fileSize : sampleBlockSize;
       final Uint8List firstBlock = await raf.read(firstReadSize);
-      input.add(firstBlock);
+      bytesToHash.addAll(firstBlock);
 
       // 3. Read last 64KB
       if (fileSize > sampleBlockSize) {
         final int seekPos = fileSize - sampleBlockSize;
         await raf.setPosition(seekPos);
         final Uint8List lastBlock = await raf.read(sampleBlockSize);
-        input.add(lastBlock);
+        bytesToHash.addAll(lastBlock);
       }
 
-      input.close();
-      return output.events.single.toString();
+      final digest = sha256.convert(bytesToHash);
+      return digest.toString();
     } finally {
       await raf.close();
     }

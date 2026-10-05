@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/database/asset_sync_entity.dart';
 import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
 import 'gallery_scanner_service.dart';
