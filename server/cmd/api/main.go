@@ -106,6 +106,10 @@ func main() {
 		mediaGroup := api.Group("/media")
 		{
 			mediaGroup.Get("/", mediaHandler.List)
+			mediaGroup.Get("/timeline", mediaHandler.GetTimeline)
+			mediaGroup.Get("/:id", mediaHandler.GetByID)
+			mediaGroup.Post("/:id/favorite", mediaHandler.ToggleFavorite)
+			mediaGroup.Delete("/:id", mediaHandler.Delete)
 			mediaGroup.Get("/:id/thumb", mediaHandler.GetThumbnail)
 			mediaGroup.Get("/:id/raw", mediaHandler.GetRaw)
 		}

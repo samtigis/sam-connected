@@ -20,6 +20,7 @@ type Media struct {
 	Height        int        `gorm:"default:0" json:"height,omitempty"`
 	Duration      float64    `gorm:"default:0" json:"duration,omitempty"` // Video duration in seconds
 	TakenAt       *time.Time `gorm:"index" json:"taken_at,omitempty"`     // Captured time from EXIF or client
+	IsFavorite    bool       `gorm:"default:false;index" json:"is_favorite"`
 	CreatedAt     time.Time  `gorm:"index" json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }

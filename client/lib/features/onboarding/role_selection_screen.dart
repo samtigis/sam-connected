@@ -1,7 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../core/role/role_controller.dart';
-import '../client_sync/client_sync_screen.dart';
+import '../home/client_home_screen.dart';
 import '../server_dashboard/server_dashboard_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
@@ -59,7 +59,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         );
       } else {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ClientSyncScreen()),
+          MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
         );
       }
     } catch (e) {

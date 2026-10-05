@@ -14,6 +14,8 @@ class DiscoveredHost {
     required this.port,
   }) : baseUrl = 'http://$host:$port/api/v1';
 
+  String get ip => host;
+
   @override
   String toString() => '$name ($baseUrl)';
 }
@@ -25,6 +27,7 @@ class DiscoveryService extends ChangeNotifier {
 
   bool get isSearching => _isSearching;
   List<DiscoveredHost> get servers => List.unmodifiable(_servers);
+  DiscoveredHost? get discoveredHost => _servers.isNotEmpty ? _servers.first : null;
 
   Future<void> startDiscovery() async {
     if (_isSearching) return;

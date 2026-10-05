@@ -45,10 +45,27 @@ func (h *MediaHandler) List(c *fiber.Ctx) error {
 
 	deviceID := strings.TrimSpace(c.Query("device_id"))
 	order := strings.ToLower(c.Query("order", "desc"))
+	mediaType := strings.ToLower(strings.TrimSpace(c.Query("type")))
+	favoriteParam := strings.TrimSpace(c.Query("favorite"))
+	searchParam := strings.TrimSpace(c.Query("search"))
 
 	query := h.DB.Model(&database.Media{})
 	if deviceID != "" {
 		query = query.Where("device_id = ?", deviceID)
+	}
+
+	if mediaType == "image" {
+		query = query.Where("mime_type LIKE 'image/%'")
+	} else if mediaType == "video" {
+		query = query.Where("mime_type LIKE 'video/%'")
+	}
+
+	if favoriteParam == "true" || favoriteParam == "1" {
+		query = query.Where("is_favorite = ?", true)
+	}
+
+	if searchParam != "" {
+		query = query.Where("file_name LIKE ?", "%"+searchParam+"%")
 	}
 
 	if order == "asc" {
@@ -87,6 +104,167 @@ func (h *MediaHandler) List(c *fiber.Ctx) error {
 		"count":       len(items),
 		"next_cursor": nextCursor,
 		"has_more":    hasMore,
+	})
+}
+
+// TimelineGroup holds grouped media by calendar date.
+type TimelineGroup struct {
+	Date  string           `json:"date"`
+	Count int              `json:"count"`
+	Items []database.Media `json:"items"`
+}
+
+// GetTimeline groups media by date (YYYY-MM-DD) for Google Photos-like timeline feeds.
+// GET /api/v1/media/timeline?device_id=...&type=image|video&favorite=true
+func (h *MediaHandler) GetTimeline(c *fiber.Ctx) error {
+	deviceID := strings.TrimSpace(c.Query("device_id"))
+	mediaType := strings.ToLower(strings.TrimSpace(c.Query("type")))
+	favoriteParam := strings.TrimSpace(c.Query("favorite"))
+
+	query := h.DB.Model(&database.Media{})
+	if deviceID != "" {
+		query = query.Where("device_id = ?", deviceID)
+	}
+	if mediaType == "image" {
+		query = query.Where("mime_type LIKE 'image/%'")
+	} else if mediaType == "video" {
+		query = query.Where("mime_type LIKE 'video/%'")
+	}
+	if favoriteParam == "true" || favoriteParam == "1" {
+		query = query.Where("is_favorite = ?", true)
+	}
+
+	var allItems []database.Media
+	if err := query.Order("created_at DESC").Limit(500).Find(&allItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to query media timeline",
+		})
+	}
+
+	// Group by date (YYYY-MM-DD)
+	groupsMap := make(map[string][]database.Media)
+	var orderedDates []string
+
+	for _, item := range allItems {
+		var dateKey string
+		if item.TakenAt != nil && !item.TakenAt.IsZero() {
+			dateKey = item.TakenAt.Format("2006-01-02")
+		} else {
+			dateKey = item.CreatedAt.Format("2006-01-02")
+		}
+
+		if _, exists := groupsMap[dateKey]; !exists {
+			orderedDates = append(orderedDates, dateKey)
+		}
+		groupsMap[dateKey] = append(groupsMap[dateKey], item)
+	}
+
+	var timeline []TimelineGroup
+	for _, date := range orderedDates {
+		timeline = append(timeline, TimelineGroup{
+			Date:  date,
+			Count: len(groupsMap[date]),
+			Items: groupsMap[date],
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"total_media": len(allItems),
+		"groups":      timeline,
+	})
+}
+
+// GetByID returns the complete metadata for a single media item.
+// GET /api/v1/media/:id
+func (h *MediaHandler) GetByID(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 64)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid media id",
+		})
+	}
+
+	var media database.Media
+	if err := h.DB.First(&media, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "media not found",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"data": media,
+	})
+}
+
+// ToggleFavorite toggles the favorite status of a media item.
+// POST /api/v1/media/:id/favorite
+func (h *MediaHandler) ToggleFavorite(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 64)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid media id",
+		})
+	}
+
+	var media database.Media
+	if err := h.DB.First(&media, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "media not found",
+		})
+	}
+
+	media.IsFavorite = !media.IsFavorite
+	if err := h.DB.Model(&database.Media{}).Where("id = ?", media.ID).Update("is_favorite", media.IsFavorite).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to update favorite status",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"id":          media.ID,
+		"is_favorite": media.IsFavorite,
+	})
+}
+
+// Delete removes a media file from disk and database.
+// DELETE /api/v1/media/:id
+func (h *MediaHandler) Delete(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 64)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "invalid media id",
+		})
+	}
+
+	var media database.Media
+	if err := h.DB.First(&media, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "media not found",
+		})
+	}
+
+	// Remove physical files
+	if media.FilePath != "" {
+		_ = os.Remove(media.FilePath)
+	}
+	if media.ThumbnailPath != "" {
+		_ = os.Remove(media.ThumbnailPath)
+	}
+
+	// Delete DB row
+	if err := h.DB.Delete(&media).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to delete media database record",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":  "deleted",
+		"id":      media.ID,
+		"message": "Media and associated thumbnails deleted successfully",
 	})
 }
 

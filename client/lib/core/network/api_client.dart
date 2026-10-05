@@ -98,21 +98,71 @@ class ApiClient {
     );
   }
 
-  /// Fetch remote media list with cursor pagination
+  /// Fetch remote media list with cursor pagination and optional filters
   /// GET /api/v1/media
   Future<Map<String, dynamic>> getMedia({
     int cursor = 0,
     int limit = 50,
     String? deviceId,
+    String? type,
+    bool? favorite,
+    String? search,
+    String order = 'desc',
   }) async {
     final response = await _dio.get(
       '/media',
       queryParameters: {
         'cursor': cursor,
         'limit': limit,
-        if (deviceId != null) 'device_id': deviceId,
+        'order': order,
+        if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+        if (type != null && type.isNotEmpty) 'type': type,
+        if (favorite != null) 'favorite': favorite,
+        if (search != null && search.isNotEmpty) 'search': search,
       },
     );
     return response.data as Map<String, dynamic>;
+  }
+
+  /// Fetch grouped media timeline (Google Photos style)
+  /// GET /api/v1/media/timeline
+  Future<Map<String, dynamic>> getMediaTimeline({
+    String? deviceId,
+    String? type,
+    bool? favorite,
+  }) async {
+    final response = await _dio.get(
+      '/media/timeline',
+      queryParameters: {
+        if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+        if (type != null && type.isNotEmpty) 'type': type,
+        if (favorite != null) 'favorite': favorite,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Get details of a single media item
+  /// GET /api/v1/media/:id
+  Future<Map<String, dynamic>> getMediaById(int id) async {
+    final response = await _dio.get('/media/$id');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// Toggle favorite status of a media item
+  /// POST /api/v1/media/:id/favorite
+  Future<bool> toggleFavorite(int id) async {
+    final response = await _dio.post('/media/$id/favorite');
+    if (response.data is Map<String, dynamic>) {
+      return response.data['is_favorite'] == true;
+    }
+    return false;
+  }
+
+  /// Delete a media item from server disk and database
+  /// DELETE /api/v1/media/:id
+  Future<bool> deleteMedia(int id) async {
+    final response = await _dio.delete('/media/$id');
+    return response.statusCode == 200;
   }
 }

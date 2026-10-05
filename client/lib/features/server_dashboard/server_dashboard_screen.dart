@@ -1,7 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/network/api_client.dart';
 import '../../core/role/role_controller.dart';
+import '../gallery/gallery_controller.dart';
+import '../gallery/gallery_screen.dart';
 import '../onboarding/role_selection_screen.dart';
 import 'server_sidecar_controller.dart';
 
@@ -160,6 +163,22 @@ class _ServerDashboardScreenState extends State<ServerDashboardScreen> {
               );
             },
           ),
+          FilledButton.tonalIcon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => GalleryScreen(
+                    controller: GalleryController(
+                      ApiClient(baseUrl: 'http://127.0.0.1:${_serverController.port}/api/v1'),
+                    ),
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.photo_library_rounded, size: 18),
+            label: const Text('Buka Galeri Server'),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             tooltip: 'Ubah Peran (Ganti ke Mode Client)',
             icon: const Icon(Icons.swap_horiz_rounded),

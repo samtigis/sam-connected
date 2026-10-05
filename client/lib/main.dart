@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/role/role_controller.dart';
-import 'features/client_sync/client_sync_screen.dart';
+import 'features/home/client_home_screen.dart';
 import 'features/onboarding/role_selection_screen.dart';
 import 'features/server_dashboard/server_dashboard_screen.dart';
 
@@ -62,7 +62,7 @@ class SamConnectedApp extends StatelessWidget {
       case AppRole.serverHost:
         return const ServerDashboardScreen();
       case AppRole.clientUploader:
-        return const ClientSyncScreen();
+        return const ClientHomeScreen();
       case AppRole.unselected:
       default:
         return RoleSelectionScreen(roleController: roleController);

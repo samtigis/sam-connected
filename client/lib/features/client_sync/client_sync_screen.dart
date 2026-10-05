@@ -10,7 +10,18 @@ import 'gallery_scanner_service.dart';
 import 'sync_coordinator.dart';
 
 class ClientSyncScreen extends StatefulWidget {
-  const ClientSyncScreen({super.key});
+  final ApiClient? apiClient;
+  final SyncCoordinator? syncCoordinator;
+  final DiscoveryService? discoveryService;
+  final VoidCallback? onSwitchRole;
+
+  const ClientSyncScreen({
+    super.key,
+    this.apiClient,
+    this.syncCoordinator,
+    this.discoveryService,
+    this.onSwitchRole,
+  });
 
   @override
   State<ClientSyncScreen> createState() => _ClientSyncScreenState();
@@ -32,13 +43,13 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
   @override
   void initState() {
     super.initState();
-    _apiClient = ApiClient(baseUrl: _currentServerUrl);
+    _apiClient = widget.apiClient ?? ApiClient(baseUrl: _currentServerUrl);
     _scannerService = GalleryScannerService();
-    _syncCoordinator = SyncCoordinator(
+    _syncCoordinator = widget.syncCoordinator ?? SyncCoordinator(
       apiClient: _apiClient,
       scannerService: _scannerService,
     );
-    _discoveryService = DiscoveryService();
+    _discoveryService = widget.discoveryService ?? DiscoveryService();
 
     _syncCoordinator.addListener(_onSyncUpdate);
     _discoveryService.addListener(_onDiscoveryUpdate);
