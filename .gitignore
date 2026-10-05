@@ -1,0 +1,13 @@
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Storage / Temp files during test
+storage/
+*.db
+*.db-wal
+*.db-shm
+
+# Build artifacts
+client/build/
+.dart_tool/
