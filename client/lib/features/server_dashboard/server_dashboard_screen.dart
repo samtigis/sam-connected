@@ -101,12 +101,12 @@ class _ServerDashboardScreenState extends State<ServerDashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
+        title: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 10,
           children: [
             const Icon(Icons.dns_rounded, size: 22),
-            const SizedBox(width: 10),
             const Text('Host Storage Dashboard'),
-            const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
