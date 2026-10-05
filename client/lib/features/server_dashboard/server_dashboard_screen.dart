@@ -123,11 +123,16 @@ class _ServerDashboardScreenState extends State<ServerDashboardScreen> {
                     backgroundColor: _serverController.isRunning ? Colors.green : Colors.red,
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    _serverController.serverStatus,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: _serverController.isRunning ? Colors.green : Colors.red,
-                      fontWeight: FontWeight.bold,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      _serverController.serverStatus,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: _serverController.isRunning ? Colors.green : Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],

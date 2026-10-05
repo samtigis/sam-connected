@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../core/network/api_client.dart';
@@ -93,14 +94,39 @@ class ServerSidecarController extends ChangeNotifier {
     final appDir = await getApplicationSupportDirectory();
     final localBin = p.join(appDir.path, 'bin', binaryName);
     if (await File(localBin).exists()) {
+      if (!Platform.isWindows) {
+        await Process.run('chmod', ['+x', localBin]);
+      }
       return localBin;
     }
 
-    // 2. Look in relative assets/bin or executable path directory
+    // 2. Try extracting from Flutter assets bundle to localBin
+    try {
+      final byteData = await rootBundle.load('assets/bin/$binaryName');
+      final binFile = File(localBin);
+      await binFile.parent.create(recursive: true);
+      await binFile.writeAsBytes(
+        byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
+        flush: true,
+      );
+      if (!Platform.isWindows) {
+        await Process.run('chmod', ['+x', localBin]);
+      }
+      return localBin;
+    } catch (_) {
+      // Continue searching other candidate paths
+    }
+
+    // 3. Look in macOS Frameworks bundle, relative assets/bin or known project directories
     final exeDir = p.dirname(Platform.resolvedExecutable);
     final candidatePaths = [
+      p.join(exeDir, '..', 'Frameworks', 'App.framework', 'Versions', 'A', 'Resources', 'flutter_assets', 'assets', 'bin', binaryName),
+      p.join(exeDir, '..', 'Frameworks', 'App.framework', 'Resources', 'flutter_assets', 'assets', 'bin', binaryName),
+      p.join(exeDir, '..', 'Resources', 'flutter_assets', 'assets', 'bin', binaryName),
       p.join(exeDir, 'assets', 'bin', binaryName),
       p.join(exeDir, binaryName),
+      '/Applications/Projects/sam-connected/client/assets/bin/$binaryName',
+      '/Applications/Projects/sam-connected/server/$binaryName',
       p.join(Directory.current.path, 'assets', 'bin', binaryName),
       p.join(Directory.current.path, '..', 'server', binaryName),
       p.join(Directory.current.path, '..', 'server', 'cmd', 'api', binaryName),
@@ -108,6 +134,9 @@ class ServerSidecarController extends ChangeNotifier {
 
     for (final path in candidatePaths) {
       if (await File(path).exists()) {
+        if (!Platform.isWindows) {
+          await Process.run('chmod', ['+x', path]);
+        }
         return path;
       }
     }
@@ -184,7 +213,7 @@ class ServerSidecarController extends ChangeNotifier {
     } catch (e) {
       _isRunning = false;
       _isStarting = false;
-      _serverStatus = 'Error: $e';
+      _serverStatus = 'Error: ${e.toString().split('\n').first}';
       _addLog('Gagal menjalankan binary server: $e');
       notifyListeners();
       return false;
