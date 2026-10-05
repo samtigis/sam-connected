@@ -33,8 +33,11 @@ Proyek ini menggunakan arsitektur **Hybrid Dual-Engine**:
 2. **Aplikasi Multiplatform (`client/`)**:
    - Dibuat dengan **Flutter Multiplatform** (iOS, macOS, Android, Windows).
    - **Unified Dual-Mode**:
-     - **Mode Server / Host Storage (Desktop Only)**: Manajemen storage harddisk, kontrol engine daemon sidecar, pemantauan kapasitas HDD, dan live log aktivitas.
-     - **Mode Client / Uploader (Mobile / Semua Perangkat)**: Pemindaian galeri lokal, kalkulasi hash cerdas, preflight check ke server, dan pencadangan otomatis foto/video.
+     - **Mode Server / Host Storage (Desktop Only)**: Manajemen storage harddisk, kontrol engine daemon sidecar, pemantauan kapasitas HDD, live log aktivitas, dan tombol akses cepat **Galeri Server**.
+     - **Mode Client / Uploader (Mobile / Semua Perangkat)**:
+       - 🖼️ **Galeri Terkelola (Managed Gallery layaknya Google Photos)**: Timeline foto & video tersinkronisasi, pengelompokan tanggal kalender ("Hari ini", "Kemarin", bulan/tahun), filter (Foto, Video, Favorit), dan Lightbox Viewer interaktif (pinch-to-zoom 5x, swipe antarfoto, lembar detail EXIF, resolusi, ukuran, dan checksum).
+       - ☁️ **Manajer Cadangan**: Pemindaian galeri lokal, kalkulasi hash cerdas SHA-256 preflight, dan progres upload real-time.
+       - ⏱️ **Jadwal & Otomatisasi Sinkronisasi**: Konfigurasi otomatis kapan sinkron berjalan (saat aplikasi dibuka, interval berkala tiap 15m/1jam/24jam, aturan Wi-Fi only). Pengguna **tidak perlu lagi menyentuh aplikasi Files di iPhone/iPad**!
 
 ---
 
