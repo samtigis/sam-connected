@@ -1,0 +1,222 @@
+package service
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"mime"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/samtigis/sam-connected/server/internal/database"
+	"gorm.io/gorm"
+)
+
+var (
+	ErrHashMismatch   = errors.New("computed hash does not match client-provided hash")
+	ErrDuplicateMedia = errors.New("media with this hash already exists")
+	safeNameRegex     = regexp.MustCompile(`[^a-zA-Z0-9_\-\.]`)
+)
+
+// StorageService manages file persistence, directory structures, and metadata records.
+type StorageService struct {
+	BaseDir      string
+	DB           *gorm.DB
+	ThumbService *ThumbnailService
+	Hasher       *Hasher
+}
+
+// NewStorageService creates a new StorageService instance.
+func NewStorageService(baseDir string, db *gorm.DB, thumbSvc *ThumbnailService, hasher *Hasher) (*StorageService, error) {
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create base storage directory: %w", err)
+	}
+
+	return &StorageService{
+		BaseDir:      baseDir,
+		DB:           db,
+		ThumbService: thumbSvc,
+		Hasher:       hasher,
+	}, nil
+}
+
+// SanitizeDeviceID ensures deviceID doesn't contain traversal or invalid characters.
+func SanitizeDeviceID(deviceID string) string {
+	cleaned := strings.TrimSpace(deviceID)
+	if cleaned == "" {
+		return "default_device"
+	}
+	cleaned = safeNameRegex.ReplaceAllString(cleaned, "_")
+	return filepath.Clean(cleaned)
+}
+
+// SaveUploadedFile streams reader directly to a temporary file while hashing via SHA-256.
+// Upon completion, it moves the file to ./storage/{device_id}/{YYYY}/{MM}/{hash}.ext
+// and registers the entry in the database.
+func (s *StorageService) SaveUploadedFile(
+	deviceID string,
+	originalName string,
+	clientHash string,
+	reader io.Reader,
+	clientTakenAt *time.Time,
+) (*database.Media, error) {
+	cleanDeviceID := SanitizeDeviceID(deviceID)
+	ext := strings.ToLower(filepath.Ext(originalName))
+	if ext == "" {
+		ext = ".bin"
+	}
+
+	// Create temp directory under storage base
+	tmpDir := filepath.Join(s.BaseDir, ".tmp")
+	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create tmp directory: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp(tmpDir, "upload-*"+ext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		// Clean up temporary file if it still exists
+		if _, err := os.Stat(tmpPath); err == nil {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	// Stream write while computing SHA-256 simultaneously
+	hasher := sha256.New()
+	mw := io.MultiWriter(tmpFile, hasher)
+
+	writtenBytes, err := io.Copy(mw, reader)
+	_ = tmpFile.Close()
+	if err != nil {
+		return nil, fmt.Errorf("error during file streaming write: %w", err)
+	}
+
+	computedHash := hex.EncodeToString(hasher.Sum(nil))
+
+	// Verify client hash if provided
+	if clientHash != "" && !strings.EqualFold(clientHash, computedHash) {
+		return nil, fmt.Errorf("%w: expected %s, got %s", ErrHashMismatch, clientHash, computedHash)
+	}
+
+	// Check if this hash already exists in DB
+	var existing database.Media
+	if err := s.DB.Where("hash = ?", computedHash).First(&existing).Error; err == nil {
+		// Already exists - verify physical file exists
+		if _, statErr := os.Stat(existing.FilePath); statErr == nil {
+			return &existing, nil
+		}
+	}
+
+	// Determine year and month for partition: ./storage/{device_id}/{YYYY}/{MM}/{hash}.ext
+	eventTime := time.Now()
+	if clientTakenAt != nil {
+		eventTime = *clientTakenAt
+	}
+
+	yearStr := eventTime.Format("2006")
+	monthStr := eventTime.Format("01")
+
+	targetRelDir := filepath.Join(cleanDeviceID, yearStr, monthStr)
+	targetFullDir := filepath.Join(s.BaseDir, targetRelDir)
+	if err := os.MkdirAll(targetFullDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create target storage directory: %w", err)
+	}
+
+	targetFileName := computedHash + ext
+	targetFullPath := filepath.Join(targetFullDir, targetFileName)
+
+	// Move temp file to final location
+	if err := os.Rename(tmpPath, targetFullPath); err != nil {
+		// If rename fails across partitions/devices, fall back to copy
+		if copyErr := copyFile(tmpPath, targetFullPath); copyErr != nil {
+			return nil, fmt.Errorf("failed to persist file to destination: %w", copyErr)
+		}
+		_ = os.Remove(tmpPath)
+	}
+
+	mimeType := mime.TypeByExtension(ext)
+	if mimeType == "" {
+		if IsImageExtension(ext) {
+			mimeType = "image/" + strings.TrimPrefix(ext, ".")
+		} else if IsVideoExtension(ext) {
+			mimeType = "video/" + strings.TrimPrefix(ext, ".")
+		} else {
+			mimeType = "application/octet-stream"
+		}
+	}
+
+	// Prepare database record
+	media := &database.Media{
+		DeviceID:     cleanDeviceID,
+		Hash:         computedHash,
+		FileName:     originalName,
+		FilePath:     targetFullPath,
+		FileSize:     writtenBytes,
+		MimeType:     mimeType,
+		Extension:    ext,
+		TakenAt:      clientTakenAt,
+		HasThumbnail: false,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := s.DB.Create(media).Error; err != nil {
+		return nil, fmt.Errorf("failed to save media record to db: %w", err)
+	}
+
+	// Asynchronously process thumbnail if media is an image
+	if IsImageExtension(ext) {
+		thumbRelDir := filepath.Join(cleanDeviceID, "thumbnails")
+		thumbFullDir := filepath.Join(s.BaseDir, thumbRelDir)
+		thumbFileName := computedHash + ".jpg"
+		thumbFullPath := filepath.Join(thumbFullDir, thumbFileName)
+
+		s.ThumbService.ProcessThumbnailAsync(media.ID, targetFullPath, thumbFullPath, func(meta *ImageMeta, err error) {
+			if err != nil {
+				return
+			}
+			updates := map[string]interface{}{
+				"has_thumbnail":  true,
+				"thumbnail_path": thumbFullPath,
+				"width":          meta.Width,
+				"height":         meta.Height,
+			}
+			if meta.TakenAt != nil && media.TakenAt == nil {
+				updates["taken_at"] = meta.TakenAt
+			}
+			if updateErr := s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(updates).Error; updateErr != nil {
+				log.Printf("[STORAGE] Failed to update media %d thumbnail metadata: %v", media.ID, updateErr)
+			}
+		})
+	}
+
+	return media, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Sync()
+}
