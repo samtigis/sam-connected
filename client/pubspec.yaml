@@ -22,7 +22,7 @@ dependencies:
   sqflite_common_ffi: ^2.3.0
 
   # mDNS Service Discovery (_photobackup._tcp)
-  nsd: ^2.4.0
+  nsd: ^4.0.4
 
   # Network Client & Multipart Uploads
   dio: ^5.4.0
