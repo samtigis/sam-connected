@@ -1,0 +1,118 @@
+import 'dart:io';
+import 'package:dio/dio.dart';
+
+class ApiClient {
+  final Dio _dio;
+  String _baseUrl;
+
+  String get baseUrl => _baseUrl;
+
+  ApiClient({String baseUrl = 'http://127.0.0.1:8080/api/v1'})
+      : _baseUrl = baseUrl,
+        _dio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(minutes: 15),
+          sendTimeout: const Duration(minutes: 30),
+        ));
+
+  void updateBaseUrl(String newUrl) {
+    _baseUrl = newUrl;
+    _dio.options.baseUrl = newUrl;
+  }
+
+  /// Check server health & dynamic storage capacity
+  /// GET /api/v1/ping
+  Future<Map<String, dynamic>> ping() async {
+    try {
+      final response = await _dio.get('/ping');
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      throw DioException(
+        requestOptions: response.requestOptions,
+        error: 'Unexpected response status: ${response.statusCode}',
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Sends a batch of local SHA-256 hashes to check deduplication
+  /// POST /api/v1/sync/preflight
+  Future<List<String>> preflight({
+    required String deviceId,
+    required List<String> hashes,
+  }) async {
+    final response = await _dio.post(
+      '/sync/preflight',
+      data: {
+        'device_id': deviceId,
+        'hashes': hashes,
+      },
+    );
+
+    if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+      final missing = response.data['missing_hashes'] as List<dynamic>?;
+      if (missing != null) {
+        return missing.map((e) => e.toString()).toList();
+      }
+    }
+    return [];
+  }
+
+  /// Uploads media stream via multipart form
+  /// POST /api/v1/sync/upload
+  Future<Map<String, dynamic>> upload({
+    required File file,
+    required String deviceId,
+    required String clientHash,
+    DateTime? takenAt,
+    ProgressCallback? onSendProgress,
+  }) async {
+    final fileName = file.path.split(Platform.pathSeparator).last;
+
+    final formData = FormData.fromMap({
+      'device_id': deviceId,
+      'client_hash': clientHash,
+      if (takenAt != null) 'taken_at': takenAt.toIso8601String(),
+      'file': await MultipartFile.fromFile(
+        file.path,
+        filename: fileName,
+      ),
+    });
+
+    final response = await _dio.post(
+      '/sync/upload',
+      data: formData,
+      onSendProgress: onSendProgress,
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return response.data as Map<String, dynamic>;
+    }
+
+    throw DioException(
+      requestOptions: response.requestOptions,
+      error: 'Upload failed with status ${response.statusCode}: ${response.data}',
+    );
+  }
+
+  /// Fetch remote media list with cursor pagination
+  /// GET /api/v1/media
+  Future<Map<String, dynamic>> getMedia({
+    int cursor = 0,
+    int limit = 50,
+    String? deviceId,
+  }) async {
+    final response = await _dio.get(
+      '/media',
+      queryParameters: {
+        'cursor': cursor,
+        'limit': limit,
+        if (deviceId != null) 'device_id': deviceId,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
+}
