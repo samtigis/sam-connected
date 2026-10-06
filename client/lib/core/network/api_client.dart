@@ -116,6 +116,7 @@ class ApiClient {
     required String deviceId,
     required String clientHash,
     DateTime? takenAt,
+    File? thumbnailFile,
     ProgressCallback? onSendProgress,
   }) async {
     final fileName = file.path.split(Platform.pathSeparator).last;
@@ -128,6 +129,11 @@ class ApiClient {
         file.path,
         filename: fileName,
       ),
+      if (thumbnailFile != null && await thumbnailFile.exists())
+        'thumbnail': await MultipartFile.fromFile(
+          thumbnailFile.path,
+          filename: '${fileName}_thumb.jpg',
+        ),
     });
 
     final response = await _dio.post(

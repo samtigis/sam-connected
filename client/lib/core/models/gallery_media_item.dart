@@ -82,6 +82,7 @@ class GalleryMediaItem {
     bool? isSynced,
     String? hash,
     int? fileSize,
+    AssetEntity? localEntity,
   }) {
     return GalleryMediaItem(
       id: id,
@@ -94,7 +95,7 @@ class GalleryMediaItem {
       createDateTime: createDateTime,
       isSynced: isSynced ?? this.isSynced,
       sourceType: sourceType,
-      localEntity: localEntity,
+      localEntity: localEntity ?? this.localEntity,
       serverItem: serverItem,
       hash: hash ?? this.hash,
     );

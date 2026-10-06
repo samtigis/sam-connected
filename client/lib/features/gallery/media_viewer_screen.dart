@@ -329,7 +329,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
               minScale: 1.0,
               maxScale: 5.0,
               child: Center(
-                child: item.isLocal && item.localEntity != null
+                child: item.localEntity != null
                     ? AssetEntityImage(
                         item.localEntity!,
                         isOriginal: true,

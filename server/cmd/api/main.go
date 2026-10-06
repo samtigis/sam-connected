@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"mime"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -27,6 +28,19 @@ import (
 	"github.com/samtigis/sam-connected/server/internal/service"
 	"github.com/samtigis/sam-connected/server/internal/web"
 )
+
+func init() {
+	// Register essential video and image MIME types to guarantee correct streaming headers on all OSes
+	_ = mime.AddExtensionType(".mov", "video/quicktime")
+	_ = mime.AddExtensionType(".MOV", "video/quicktime")
+	_ = mime.AddExtensionType(".mp4", "video/mp4")
+	_ = mime.AddExtensionType(".MP4", "video/mp4")
+	_ = mime.AddExtensionType(".m4v", "video/x-m4v")
+	_ = mime.AddExtensionType(".M4V", "video/x-m4v")
+	_ = mime.AddExtensionType(".webm", "video/webm")
+	_ = mime.AddExtensionType(".heic", "image/heic")
+	_ = mime.AddExtensionType(".HEIC", "image/heic")
+}
 
 func main() {
 	// Hook log output into GUI log buffer and standard output
@@ -158,6 +172,7 @@ func main() {
 			mediaGroup.Delete("/:id", mediaHandler.Delete)
 			mediaGroup.Get("/:id/thumb", mediaHandler.GetThumbnail)
 			mediaGroup.Get("/:id/raw", mediaHandler.GetRaw)
+			mediaGroup.Get("/:id/raw/:filename", mediaHandler.GetRaw)
 		}
 	}
 

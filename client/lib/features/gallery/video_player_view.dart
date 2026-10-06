@@ -60,13 +60,47 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
         }
         _controller = VideoPlayerController.file(file);
       } else if (widget.item.isServer && widget.item.serverItem != null) {
-        final String rawUrl = widget.item.serverItem!.rawUrl(widget.serverBaseUrl);
-        _controller = VideoPlayerController.networkUrl(Uri.parse(rawUrl));
+        // 1. If this video is also stored on this iPhone, play local file directly for zero-latency instant playback!
+        if (widget.item.localEntity != null) {
+          try {
+            final File? localFile = await widget.item.localEntity!.originFile ?? await widget.item.localEntity!.file;
+            if (localFile != null && await localFile.exists()) {
+              _controller = VideoPlayerController.file(localFile);
+            }
+          } catch (_) {}
+        }
+
+        // 2. Otherwise, stream from server with proper Range/MIME headers
+        if (_controller == null) {
+          final String rawUrl = widget.item.serverItem!.rawUrl(widget.serverBaseUrl);
+          _controller = VideoPlayerController.networkUrl(
+            Uri.parse(rawUrl),
+            httpHeaders: const {
+              'Accept': '*/*',
+            },
+          );
+        }
       } else {
         throw Exception('Sumber video tidak valid.');
       }
 
-      await _controller!.initialize();
+      try {
+        await _controller!.initialize();
+      } catch (initErr) {
+        // Fallback to base raw url if filename url failed
+        if (widget.item.isServer && widget.item.serverItem != null) {
+          final fallbackUrl = '${widget.serverBaseUrl}/media/${widget.item.id}/raw';
+          try {
+            _controller?.dispose();
+            _controller = VideoPlayerController.networkUrl(Uri.parse(fallbackUrl));
+            await _controller!.initialize();
+          } catch (_) {
+            throw Exception('Gagal memuat video dari server (${widget.serverBaseUrl}): $initErr');
+          }
+        } else {
+          rethrow;
+        }
+      }
       _controller!.setLooping(false);
       _controller!.addListener(_onControllerUpdate);
 

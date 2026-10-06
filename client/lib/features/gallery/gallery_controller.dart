@@ -193,6 +193,14 @@ class GalleryController extends ChangeNotifier {
       final int serverTotal = (res['total_media'] as num?)?.toInt() ?? 0;
 
       final List<GalleryMediaItem> items = [];
+      final Map<String, AssetEntity> localByTitle = {
+        for (final m in _deviceMedia)
+          if (m.localEntity != null) m.title.toLowerCase(): m.localEntity!
+      };
+      final Map<String, AssetEntity> localByHash = {
+        for (final m in _deviceMedia)
+          if (m.localEntity != null && m.hash != null) m.hash!: m.localEntity!
+      };
 
       for (final g in groupsData) {
         if (g is Map<String, dynamic>) {
@@ -200,7 +208,8 @@ class GalleryController extends ChangeNotifier {
           for (final raw in itemsRaw) {
             if (raw is Map<String, dynamic>) {
               final mediaItem = MediaItem.fromJson(raw);
-              items.add(GalleryMediaItem.fromServerItem(mediaItem));
+              final entity = localByHash[mediaItem.hash] ?? localByTitle[mediaItem.fileName.toLowerCase()];
+              items.add(GalleryMediaItem.fromServerItem(mediaItem).copyWith(localEntity: entity));
             }
           }
         }
@@ -257,12 +266,36 @@ class GalleryController extends ChangeNotifier {
       final String hash = await SmartHasher.computeHash(file, isVideo: item.isVideo);
       final String deviceId = Platform.localHostname.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
 
-      final uploadRes = await _apiClient.upload(
-        file: file,
-        deviceId: deviceId,
-        clientHash: hash,
-        takenAt: item.createDateTime,
-      );
+      File? thumbFile;
+      if (item.isVideo) {
+        try {
+          final thumbBytes = await item.localEntity!.thumbnailDataWithSize(const ThumbnailSize(400, 400));
+          if (thumbBytes != null && thumbBytes.isNotEmpty) {
+            final tempDir = Directory.systemTemp;
+            thumbFile = File('${tempDir.path}/thumb_${DateTime.now().millisecondsSinceEpoch}.jpg');
+            await thumbFile.writeAsBytes(thumbBytes);
+          }
+        } catch (thumbErr) {
+          debugPrint('[GalleryController] Failed to generate video thumb: $thumbErr');
+        }
+      }
+
+      Map<String, dynamic> uploadRes;
+      try {
+        uploadRes = await _apiClient.upload(
+          file: file,
+          deviceId: deviceId,
+          clientHash: hash,
+          takenAt: item.createDateTime,
+          thumbnailFile: thumbFile,
+        );
+      } finally {
+        if (thumbFile != null && await thumbFile.exists()) {
+          try {
+            await thumbFile.delete();
+          } catch (_) {}
+        }
+      }
 
       final mediaInfo = uploadRes['media'] as Map<String, dynamic>?;
       final int serverId = (mediaInfo?['id'] as int?) ?? 0;

@@ -640,7 +640,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
           // Thumbnail Image Surface
           ClipRRect(
             borderRadius: BorderRadius.circular(isSelected ? 6 : 0),
-            child: item.isLocal && item.localEntity != null
+            child: item.localEntity != null
                 ? AssetEntityImage(
                     item.localEntity!,
                     isOriginal: false,
@@ -655,10 +655,30 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     ? Image.network(
                         item.serverItem!.thumbnailUrl(ctrl.serverBaseUrl),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
-                        ),
+                        errorBuilder: (_, __, ___) => item.isVideo
+                            ? Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.blueGrey.shade900,
+                                      Colors.grey.shade900,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.play_circle_fill_rounded,
+                                    color: Colors.white.withOpacity(0.7),
+                                    size: 38,
+                                  ),
+                                ),
+                              )
+                            : Container(
+                                color: Colors.grey.shade200,
+                                child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+                              ),
                       )
                     : Container(color: Colors.grey.shade300),
           ),

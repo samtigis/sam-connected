@@ -9,6 +9,7 @@ import (
 	"log"
 	"mime"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -65,6 +66,7 @@ func (s *StorageService) SaveUploadedFile(
 	clientHash string,
 	reader io.Reader,
 	clientTakenAt *time.Time,
+	thumbReader ...io.Reader,
 ) (*database.Media, error) {
 	cleanDeviceID := SanitizeDeviceID(deviceID)
 	ext := strings.ToLower(filepath.Ext(originalName))
@@ -173,13 +175,29 @@ func (s *StorageService) SaveUploadedFile(
 		return nil, fmt.Errorf("failed to save media record to db: %w", err)
 	}
 
-	// Asynchronously process thumbnail if media is an image
-	if IsImageExtension(ext) {
-		thumbRelDir := filepath.Join(cleanDeviceID, "thumbnails")
-		thumbFullDir := filepath.Join(s.BaseDir, thumbRelDir)
-		thumbFileName := computedHash + ".jpg"
-		thumbFullPath := filepath.Join(thumbFullDir, thumbFileName)
+	thumbRelDir := filepath.Join(cleanDeviceID, "thumbnails")
+	thumbFullDir := filepath.Join(s.BaseDir, thumbRelDir)
+	thumbFileName := computedHash + ".jpg"
+	thumbFullPath := filepath.Join(thumbFullDir, thumbFileName)
 
+	var customThumb io.Reader
+	if len(thumbReader) > 0 && thumbReader[0] != nil {
+		customThumb = thumbReader[0]
+	}
+
+	if customThumb != nil {
+		_ = os.MkdirAll(thumbFullDir, 0755)
+		if tf, err := os.Create(thumbFullPath); err == nil {
+			_, _ = io.Copy(tf, customThumb)
+			_ = tf.Close()
+			s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
+				"has_thumbnail":  true,
+				"thumbnail_path": thumbFullPath,
+			})
+			media.HasThumbnail = true
+			media.ThumbnailPath = thumbFullPath
+		}
+	} else if IsImageExtension(ext) {
 		s.ThumbService.ProcessThumbnailAsync(media.ID, targetFullPath, thumbFullPath, func(meta *ImageMeta, err error) {
 			if err != nil {
 				return
@@ -197,6 +215,20 @@ func (s *StorageService) SaveUploadedFile(
 				log.Printf("[STORAGE] Failed to update media %d thumbnail metadata: %v", media.ID, updateErr)
 			}
 		})
+	} else if IsVideoExtension(ext) {
+		// Attempt video thumbnail generation via ffmpeg if available
+		go func() {
+			if ffmpegPath, err := exec.LookPath("ffmpeg"); err == nil {
+				_ = os.MkdirAll(thumbFullDir, 0755)
+				cmd := exec.Command(ffmpegPath, "-y", "-ss", "00:00:00.500", "-i", targetFullPath, "-frames:v", "1", "-vf", "scale=400:-1", "-q:v", "2", thumbFullPath)
+				if cmd.Run() == nil {
+					s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
+						"has_thumbnail":  true,
+						"thumbnail_path": thumbFullPath,
+					})
+				}
+			}
+		}()
 	}
 
 	return media, nil

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"io"
 	"strings"
 	"time"
 
@@ -146,8 +147,17 @@ func (h *SyncHandler) Upload(c *fiber.Ctx) error {
 	}
 	defer srcStream.Close()
 
+	// Open optional thumbnail multipart stream if provided
+	var thumbStream io.Reader
+	if thumbHeader, err := c.FormFile("thumbnail"); err == nil && thumbHeader != nil {
+		if ts, err := thumbHeader.Open(); err == nil {
+			defer ts.Close()
+			thumbStream = ts
+		}
+	}
+
 	// Stream and save
-	media, err := h.Storage.SaveUploadedFile(deviceID, fileHeader.Filename, clientHash, srcStream, clientTakenAt)
+	media, err := h.Storage.SaveUploadedFile(deviceID, fileHeader.Filename, clientHash, srcStream, clientTakenAt, thumbStream)
 	if err != nil {
 		if errors.Is(err, service.ErrHashMismatch) {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{

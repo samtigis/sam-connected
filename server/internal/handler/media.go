@@ -3,6 +3,8 @@ package handler
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -288,11 +290,11 @@ func (h *MediaHandler) GetThumbnail(c *fiber.Ctx) error {
 
 	// Check if thumbnail exists
 	if !media.HasThumbnail || media.ThumbnailPath == "" {
+		thumbDir := fmt.Sprintf("%s/%s/thumbnails", h.Storage.BaseDir, media.DeviceID)
+		thumbPath := fmt.Sprintf("%s/%s.jpg", thumbDir, media.Hash)
+
 		// If media is image, attempt on-demand generation
 		if service.IsImageExtension(media.Extension) && media.FilePath != "" {
-			thumbDir := fmt.Sprintf("%s/%s/thumbnails", h.Storage.BaseDir, media.DeviceID)
-			thumbPath := fmt.Sprintf("%s/%s.jpg", thumbDir, media.Hash)
-
 			meta, genErr := h.ThumbService.GenerateThumbnail(media.FilePath, thumbPath)
 			if genErr == nil {
 				media.HasThumbnail = true
@@ -308,6 +310,28 @@ func (h *MediaHandler) GetThumbnail(c *fiber.Ctx) error {
 			} else {
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 					"error": "thumbnail not available for this media",
+				})
+			}
+		} else if service.IsVideoExtension(media.Extension) && media.FilePath != "" {
+			// If media is video, try extracting a frame via ffmpeg if available
+			if ffmpegPath, err := exec.LookPath("ffmpeg"); err == nil {
+				_ = os.MkdirAll(thumbDir, 0755)
+				cmd := exec.Command(ffmpegPath, "-y", "-ss", "00:00:00.500", "-i", media.FilePath, "-frames:v", "1", "-vf", "scale=400:-1", "-q:v", "2", thumbPath)
+				if cmd.Run() == nil {
+					media.HasThumbnail = true
+					media.ThumbnailPath = thumbPath
+					h.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
+						"has_thumbnail":  true,
+						"thumbnail_path": thumbPath,
+					})
+				} else {
+					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+						"error": "video thumbnail generation failed",
+					})
+				}
+			} else {
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+					"error": "ffmpeg not found for video thumbnail generation",
 				})
 			}
 		} else {
@@ -361,13 +385,49 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 		})
 	}
 
-	// Content headers
-	if media.MimeType != "" {
-		c.Set("Content-Type", media.MimeType)
+	// Determine accurate content type based on extension
+	ext := strings.ToLower(filepath.Ext(media.FileName))
+	if ext == "" {
+		ext = strings.ToLower(media.Extension)
 	}
+	if !strings.HasPrefix(ext, ".") && ext != "" {
+		ext = "." + ext
+	}
+
+	contentType := "application/octet-stream"
+	switch ext {
+	case ".mp4":
+		contentType = "video/mp4"
+	case ".mov":
+		contentType = "video/quicktime"
+	case ".m4v":
+		contentType = "video/x-m4v"
+	case ".webm":
+		contentType = "video/webm"
+	case ".avi":
+		contentType = "video/x-msvideo"
+	case ".mkv":
+		contentType = "video/x-matroska"
+	case ".jpg", ".jpeg":
+		contentType = "image/jpeg"
+	case ".png":
+		contentType = "image/png"
+	case ".heic", ".heif":
+		contentType = "image/heic"
+	case ".webp":
+		contentType = "image/webp"
+	default:
+		if media.MimeType != "" && media.MimeType != "application/octet-stream" && !strings.Contains(media.MimeType, "mov") {
+			contentType = media.MimeType
+		}
+	}
+
+	c.Set("Content-Type", contentType)
 	c.Set("Accept-Ranges", "bytes")
 	c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, media.FileName))
 
 	// Fiber's SendFile automatically honors Range headers and sends 206 Partial Content for videos
-	return c.SendFile(media.FilePath)
+	err = c.SendFile(media.FilePath)
+	c.Response().Header.SetContentType(contentType)
+	return err
 }
