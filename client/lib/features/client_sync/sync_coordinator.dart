@@ -199,6 +199,7 @@ class SyncCoordinator extends ChangeNotifier {
             } else {
               // Server already has this hash -> mark synced locally immediately!
               await localDb.markSynced(asset.hash, 0);
+              await localDb.markSyncedByAssetId(asset.entity.id, serverId: 0);
               preflightSkipped++;
             }
           }
@@ -264,6 +265,7 @@ class SyncCoordinator extends ChangeNotifier {
           final int serverId = (mediaInfo?['id'] as int?) ?? 0;
 
           await localDb.markSynced(item.hash, serverId);
+          await localDb.markSyncedByAssetId(item.entity.id, serverId: serverId);
           uploaded++;
           _log('Sukses mencadangkan: $fileName');
 

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../core/models/media_item.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
+import '../../core/models/gallery_media_item.dart';
 import 'gallery_controller.dart';
+import 'video_player_view.dart';
 
 class MediaViewerScreen extends StatefulWidget {
-  final List<MediaItem> items;
+  final List<GalleryMediaItem> items;
   final int initialIndex;
   final GalleryController controller;
 
@@ -23,6 +26,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   late int _currentIndex;
   final TransformationController _transformController = TransformationController();
   TapDownDetails? _doubleTapDetails;
+  bool _isBackingUpCurrent = false;
 
   @override
   void initState() {
@@ -49,7 +53,46 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     }
   }
 
-  void _showInfoSheet(BuildContext context, MediaItem item) {
+  void _handleBackupCurrent(GalleryMediaItem item) async {
+    if (_isBackingUpCurrent || item.isSynced) return;
+
+    setState(() {
+      _isBackingUpCurrent = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await widget.controller.backupSingleAsset(item);
+
+    if (mounted) {
+      setState(() {
+        _isBackingUpCurrent = false;
+      });
+
+      if (success) {
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF16A34A),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Berhasil mencadangkan "${item.title}" ke server!')),
+              ],
+            ),
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.redAccent,
+            content: Text('Gagal mencadangkan file ke server. Pastikan server aktif.'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showInfoSheet(BuildContext context, GalleryMediaItem item) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -81,8 +124,20 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   ],
                 ),
                 const Divider(),
-                _buildInfoRow(ctx, 'Nama File', item.fileName, Icons.image_rounded),
-                _buildInfoRow(ctx, 'Ukuran', item.formattedFileSize, Icons.storage_rounded),
+                _buildInfoRow(ctx, 'Nama File', item.title, Icons.description_rounded),
+                _buildInfoRow(
+                  ctx,
+                  'Status Cadangan',
+                  item.isSynced ? 'Sudah Tercadangkan di Server ✅' : 'Belum Tercadangkan ⚠️',
+                  item.isSynced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                  highlightColor: item.isSynced ? const Color(0xFF16A34A) : const Color(0xFFEA580C),
+                ),
+                _buildInfoRow(
+                  ctx,
+                  'Tipe Media',
+                  item.isVideo ? 'Video (${item.formattedDuration})' : 'Foto / Gambar',
+                  item.isVideo ? Icons.videocam_rounded : Icons.image_rounded,
+                ),
                 if (item.width > 0 && item.height > 0)
                   _buildInfoRow(
                     ctx,
@@ -91,14 +146,28 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                     Icons.aspect_ratio_rounded,
                   ),
                 _buildInfoRow(ctx, 'Tanggal Diambil', item.formattedDate, Icons.calendar_today_rounded),
-                _buildInfoRow(ctx, 'Tipe MIME', item.mimeType, Icons.category_rounded),
-                _buildInfoRow(ctx, 'ID Perangkat Asal', item.deviceId, Icons.phone_iphone_rounded),
-                _buildInfoRow(
-                  ctx,
-                  'Checksum SHA-256',
-                  item.hash.length > 16 ? '${item.hash.substring(0, 16)}...' : item.hash,
-                  Icons.fingerprint_rounded,
-                ),
+                if (item.formattedFileSize.isNotEmpty)
+                  _buildInfoRow(ctx, 'Ukuran File', item.formattedFileSize, Icons.storage_rounded),
+                if (item.hash != null && item.hash!.isNotEmpty)
+                  _buildInfoRow(
+                    ctx,
+                    'Checksum SHA-256',
+                    item.hash!.length > 16 ? '${item.hash!.substring(0, 16)}...' : item.hash!,
+                    Icons.fingerprint_rounded,
+                  ),
+                const SizedBox(height: 12),
+                if (!item.isSynced && item.isLocal)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _handleBackupCurrent(item);
+                      },
+                      icon: const Icon(Icons.cloud_upload_rounded),
+                      label: const Text('Cadangkan File Ini Sekarang'),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -107,14 +176,20 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     );
   }
 
-  Widget _buildInfoRow(BuildContext context, String label, String value, IconData icon) {
+  Widget _buildInfoRow(
+    BuildContext context,
+    String label,
+    String value,
+    IconData icon, {
+    Color? highlightColor,
+  }) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: theme.colorScheme.primary),
+          Icon(icon, size: 20, color: highlightColor ?? theme.colorScheme.primary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -126,7 +201,10 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 ),
                 Text(
                   value,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: highlightColor,
+                  ),
                 ),
               ],
             ),
@@ -136,50 +214,13 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     );
   }
 
-  void _confirmDelete(BuildContext context, MediaItem item) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Media Ini?'),
-        content: Text('File "${item.fileName}" akan dihapus permanen dari server MacBook Anda.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Hapus'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      final success = await widget.controller.deleteMedia(item);
-      if (mounted) {
-        if (success) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('File berhasil dihapus dari server')),
-          );
-          navigator.pop();
-        } else {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('Gagal menghapus file dari server')),
-          );
-        }
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.items.isEmpty) {
-      return const Scaffold(body: Center(child: Text('Tidak ada media')));
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: Text('Tidak ada media', style: TextStyle(color: Colors.white))),
+      );
     }
 
     final currentItem = widget.items[_currentIndex];
@@ -188,14 +229,14 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.6),
+        backgroundColor: Colors.black.withOpacity(0.65),
         foregroundColor: Colors.white,
         elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              currentItem.fileName,
+              currentItem.title,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
             ),
@@ -206,29 +247,53 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
           ],
         ),
         actions: [
-          // Favorite heart toggle
-          IconButton(
-            tooltip: currentItem.isFavorite ? 'Hapus dari Favorit' : 'Tambah ke Favorit',
-            icon: Icon(
-              currentItem.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              color: currentItem.isFavorite ? Colors.redAccent : Colors.white,
-            ),
-            onPressed: () {
-              widget.controller.toggleFavorite(currentItem);
-              setState(() {});
-            },
+          // Backup status pill
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: currentItem.isSynced
+                ? Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16A34A).withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF16A34A)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 14),
+                        SizedBox(width: 4),
+                        Text(
+                          'Tercadangkan',
+                          style: TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  )
+                : _isBackingUpCurrent
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orangeAccent),
+                        ),
+                      )
+                    : ActionChip(
+                        avatar: const Icon(Icons.cloud_upload_rounded, size: 14, color: Colors.white),
+                        label: const Text(
+                          'Cadangkan',
+                          style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        backgroundColor: const Color(0xFFEA580C),
+                        onPressed: () => _handleBackupCurrent(currentItem),
+                      ),
           ),
           // Info Details sheet
           IconButton(
             tooltip: 'Detail EXIF & Info',
             icon: const Icon(Icons.info_outline_rounded),
             onPressed: () => _showInfoSheet(context, currentItem),
-          ),
-          // Delete
-          IconButton(
-            tooltip: 'Hapus dari Server',
-            icon: const Icon(Icons.delete_outline_rounded),
-            onPressed: () => _confirmDelete(context, currentItem),
           ),
         ],
       ),
@@ -243,9 +308,19 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
         },
         itemBuilder: (ctx, index) {
           final item = widget.items[index];
-          final imageUrl = item.rawUrl(baseUrl);
-          final thumbUrl = item.thumbnailUrl(baseUrl);
+          final isCurrent = index == _currentIndex;
 
+          if (item.isVideo) {
+            // Video Player
+            return VideoPlayerView(
+              key: ValueKey('video_${item.id}'),
+              item: item,
+              serverBaseUrl: baseUrl,
+              isCurrentPage: isCurrent,
+            );
+          }
+
+          // Photo Viewer with pinch and double-tap zoom
           return GestureDetector(
             onDoubleTapDown: (details) => _doubleTapDetails = details,
             onDoubleTap: _onDoubleTap,
@@ -254,53 +329,39 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
               minScale: 1.0,
               maxScale: 5.0,
               child: Center(
-                child: item.isVideo
-                    ? Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Image.network(
-                            thumbUrl,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.videocam_rounded,
-                              size: 72,
-                              color: Colors.white38,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.6),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.play_arrow_rounded,
-                              size: 48,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Image.network(
-                        imageUrl,
+                child: item.isLocal && item.localEntity != null
+                    ? AssetEntityImage(
+                        item.localEntity!,
+                        isOriginal: true,
                         fit: BoxFit.contain,
                         loadingBuilder: (ctx, child, progress) {
                           if (progress == null) return child;
-                          // While loading raw original, show thumbnail as crisp low-res preview
                           return Stack(
                             alignment: Alignment.center,
                             children: [
-                              Image.network(thumbUrl, fit: BoxFit.contain),
+                              AssetEntityImage(
+                                item.localEntity!,
+                                isOriginal: false,
+                                thumbnailSize: const ThumbnailSize(300, 300),
+                                fit: BoxFit.contain,
+                              ),
                               const CircularProgressIndicator(color: Colors.white54),
                             ],
                           );
                         },
-                        errorBuilder: (ctx, err, stack) => Image.network(
-                          thumbUrl,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, __, ___) => const Center(
-                            child: Icon(Icons.broken_image_rounded, size: 64, color: Colors.white38),
-                          ),
+                        errorBuilder: (ctx, err, stack) => const Center(
+                          child: Icon(Icons.broken_image_rounded, size: 64, color: Colors.white38),
+                        ),
+                      )
+                    : Image.network(
+                        item.serverItem != null ? item.serverItem!.rawUrl(baseUrl) : '',
+                        fit: BoxFit.contain,
+                        loadingBuilder: (ctx, child, progress) {
+                          if (progress == null) return child;
+                          return const Center(child: CircularProgressIndicator(color: Colors.white54));
+                        },
+                        errorBuilder: (ctx, err, stack) => const Center(
+                          child: Icon(Icons.broken_image_rounded, size: 64, color: Colors.white38),
                         ),
                       ),
               ),

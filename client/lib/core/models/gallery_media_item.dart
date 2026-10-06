@@ -1,0 +1,150 @@
+import 'package:intl/intl.dart';
+import 'package:photo_manager/photo_manager.dart';
+import 'media_item.dart';
+
+enum MediaSourceType {
+  localDevice,
+  serverHost,
+}
+
+class GalleryMediaItem {
+  final String id;
+  final String title;
+  final bool isVideo;
+  final Duration videoDuration;
+  final int width;
+  final int height;
+  final int fileSize;
+  final DateTime createDateTime;
+  final bool isSynced;
+  final MediaSourceType sourceType;
+  final AssetEntity? localEntity;
+  final MediaItem? serverItem;
+  final String? hash;
+
+  GalleryMediaItem({
+    required this.id,
+    required this.title,
+    required this.isVideo,
+    this.videoDuration = Duration.zero,
+    this.width = 0,
+    this.height = 0,
+    this.fileSize = 0,
+    required this.createDateTime,
+    required this.isSynced,
+    required this.sourceType,
+    this.localEntity,
+    this.serverItem,
+    this.hash,
+  });
+
+  bool get isLocal => sourceType == MediaSourceType.localDevice && localEntity != null;
+  bool get isServer => sourceType == MediaSourceType.serverHost && serverItem != null;
+
+  factory GalleryMediaItem.fromAssetEntity(
+    AssetEntity entity, {
+    required bool isSynced,
+    String? hash,
+  }) {
+    return GalleryMediaItem(
+      id: entity.id,
+      title: entity.title ?? 'Media_${entity.id.substring(0, entity.id.length > 8 ? 8 : entity.id.length)}',
+      isVideo: entity.type == AssetType.video,
+      videoDuration: Duration(seconds: entity.duration),
+      width: entity.width,
+      height: entity.height,
+      fileSize: 0,
+      createDateTime: entity.createDateTime,
+      isSynced: isSynced,
+      sourceType: MediaSourceType.localDevice,
+      localEntity: entity,
+      hash: hash,
+    );
+  }
+
+  factory GalleryMediaItem.fromServerItem(MediaItem item) {
+    return GalleryMediaItem(
+      id: item.id.toString(),
+      title: item.fileName,
+      isVideo: item.isVideo,
+      videoDuration: Duration(seconds: item.duration.round()),
+      width: item.width,
+      height: item.height,
+      fileSize: item.fileSize,
+      createDateTime: item.displayDate,
+      isSynced: true, // Always true since it exists on the server
+      sourceType: MediaSourceType.serverHost,
+      serverItem: item,
+      hash: item.hash,
+    );
+  }
+
+  GalleryMediaItem copyWith({
+    bool? isSynced,
+    String? hash,
+    int? fileSize,
+  }) {
+    return GalleryMediaItem(
+      id: id,
+      title: title,
+      isVideo: isVideo,
+      videoDuration: videoDuration,
+      width: width,
+      height: height,
+      fileSize: fileSize ?? this.fileSize,
+      createDateTime: createDateTime,
+      isSynced: isSynced ?? this.isSynced,
+      sourceType: sourceType,
+      localEntity: localEntity,
+      serverItem: serverItem,
+      hash: hash ?? this.hash,
+    );
+  }
+
+  String get formattedDuration {
+    final int hours = videoDuration.inHours;
+    final int minutes = videoDuration.inMinutes.remainder(60);
+    final int seconds = videoDuration.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  String get formattedFileSize {
+    if (fileSize <= 0) return '';
+    if (fileSize < 1024) return '$fileSize B';
+    if (fileSize < 1024 * 1024) return '${(fileSize / 1024).toStringAsFixed(1)} KB';
+    if (fileSize < 1024 * 1024 * 1024) {
+      return '${(fileSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(fileSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  String get formattedDate {
+    final now = DateTime.now();
+    final d = createDateTime;
+    if (d.year == now.year && d.month == now.month && d.day == now.day) {
+      return 'Hari ini, ${DateFormat('HH:mm').format(d)}';
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (d.year == yesterday.year && d.month == yesterday.month && d.day == yesterday.day) {
+      return 'Kemarin, ${DateFormat('HH:mm').format(d)}';
+    }
+    return DateFormat('d MMMM yyyy, HH:mm', 'id_ID').format(d);
+  }
+
+  String get dateGroupKey {
+    final d = createDateTime;
+    final now = DateTime.now();
+    if (d.year == now.year && d.month == now.month && d.day == now.day) {
+      return 'Hari Ini';
+    }
+    final yesterday = now.subtract(const Duration(days: 1));
+    if (d.year == yesterday.year && d.month == yesterday.month && d.day == yesterday.day) {
+      return 'Kemarin';
+    }
+    return DateFormat('d MMMM yyyy', 'id_ID').format(d);
+  }
+}

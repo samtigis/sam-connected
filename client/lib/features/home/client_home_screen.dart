@@ -53,11 +53,20 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     _discoveryService.addListener(_onDiscoveryUpdate);
     _discoveryService.startDiscovery();
 
+    // Refresh gallery sync indicators whenever sync finishes
+    _syncCoordinator.addListener(_onSyncCoordinatorUpdate);
+
     // Trigger auto-sync on app startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _autoSyncService.onAppResume();
       _galleryController.fetchGallery();
     });
+  }
+
+  void _onSyncCoordinatorUpdate() {
+    if (!_syncCoordinator.state.isSyncing) {
+      _galleryController.refreshSyncStatus();
+    }
   }
 
   void _onDiscoveryUpdate() {
@@ -91,6 +100,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     WidgetsBinding.instance.removeObserver(this);
     _discoveryService.removeListener(_onDiscoveryUpdate);
     _discoveryService.dispose();
+    _syncCoordinator.removeListener(_onSyncCoordinatorUpdate);
     _autoSyncService.dispose();
     _syncCoordinator.dispose();
     super.dispose();

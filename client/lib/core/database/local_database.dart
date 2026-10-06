@@ -126,6 +126,65 @@ class LocalDatabase {
     );
   }
 
+  Future<void> markSyncedByAssetId(String assetId, {int serverId = 0}) async {
+    final db = await database;
+    await db.update(
+      'synced_assets',
+      {
+        'status': SyncStatus.synced.name,
+        'server_id': serverId,
+        'synced_at': DateTime.now().toIso8601String(),
+        'last_error': null,
+      },
+      where: 'asset_id = ?',
+      whereArgs: [assetId],
+    );
+  }
+
+  Future<void> markAssetSynced(String assetId, String hash, {int serverId = 0}) async {
+    final db = await database;
+    await db.rawInsert('''
+      INSERT INTO synced_assets (asset_id, hash, file_name, file_size, mime_type, status, server_id, synced_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(asset_id) DO UPDATE SET
+        status = excluded.status,
+        server_id = excluded.server_id,
+        synced_at = excluded.synced_at
+    ''', [
+      assetId,
+      hash,
+      assetId,
+      0,
+      'unknown',
+      SyncStatus.synced.name,
+      serverId,
+      DateTime.now().toIso8601String(),
+      DateTime.now().toIso8601String(),
+    ]);
+  }
+
+  Future<Set<String>> getAllSyncedAssetIds() async {
+    final db = await database;
+    final results = await db.query(
+      'synced_assets',
+      columns: ['asset_id'],
+      where: 'status = ?',
+      whereArgs: [SyncStatus.synced.name],
+    );
+    return results.map((row) => row['asset_id'] as String).toSet();
+  }
+
+  Future<Set<String>> getAllSyncedHashes() async {
+    final db = await database;
+    final results = await db.query(
+      'synced_assets',
+      columns: ['hash'],
+      where: 'status = ?',
+      whereArgs: [SyncStatus.synced.name],
+    );
+    return results.map((row) => row['hash'] as String).toSet();
+  }
+
   Future<void> markFailed(String assetId, String error) async {
     final db = await database;
     await db.update(

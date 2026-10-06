@@ -35,7 +35,16 @@ Proyek ini menggunakan arsitektur **Hybrid Dual-Engine**:
    - **Unified Dual-Mode**:
      - **Mode Server / Host Storage (Desktop Only)**: Manajemen storage harddisk, kontrol engine daemon sidecar, pemantauan kapasitas HDD, live log aktivitas, dan tombol akses cepat **Galeri Server**.
      - **Mode Client / Uploader (Mobile / Semua Perangkat)**:
-       - 🖼️ **Galeri Terkelola (Managed Gallery layaknya Google Photos)**: Timeline foto & video tersinkronisasi, pengelompokan tanggal kalender ("Hari ini", "Kemarin", bulan/tahun), filter (Foto, Video, Favorit), dan Lightbox Viewer interaktif (pinch-to-zoom 5x, swipe antarfoto, lembar detail EXIF, resolusi, ukuran, dan checksum).
+       - 🖼️ **Galeri Perangkat & Server Terpadu**:
+          - **Indikator Status Visual**: Setiap foto dan video di galeri dilengkapi tanda status di pojok kanan atas:
+            - **Centang Hijau (✅)**: File sudah aman tercadangkan di server host.
+            - **Tanda Seru Oranye (⚠️)**: File lokal di HP belum tercadangkan ke server.
+          - **Filter Cerdas**: Filter instan untuk melihat *Semua*, *Belum Backup (⚠️)*, *Sudah Backup (✅)*, *Foto*, dan *Video*.
+          - **Mode Switcher**: Beralih antara **Galeri Perangkat (iPhone)** dan **Galeri Server (Host)** dengan satu sentuhan.
+          - **Media Viewer Lengkap & Pemutar Video**:
+            - Lightbox interaktif foto (pinch-to-zoom hingga 5x, swipe antarmedia, lembar info detail EXIF & metadata).
+            - **Pemutar Video Terintegrasi**: Putar video langsung di aplikasi layaknya galeri bawaan (kontrol play/pause, slider scrubber, cap waktu durasi, dan toggle audio mute).
+            - **Aksi Cepat Cadangkan**: Tombol sekali klik di viewer untuk mencadangkan file individual yang bertanda seru langsung ke server.
        - ☁️ **Manajer Cadangan**: Pemindaian galeri lokal, kalkulasi hash cerdas SHA-256 preflight, dan progres upload real-time.
        - ⏱️ **Jadwal & Otomatisasi Sinkronisasi**: Konfigurasi otomatis kapan sinkron berjalan (saat aplikasi dibuka, interval berkala tiap 15m/1jam/24jam, aturan Wi-Fi only). Pengguna **tidak perlu lagi menyentuh aplikasi Files di iPhone/iPad**!
 
