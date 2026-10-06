@@ -54,34 +54,21 @@ Proyek ini menggunakan arsitektur **Hybrid Dual-Engine**:
 
 ### A. Menjalankan sebagai Server di Windows PC
 
-Tersedia file executable siap pakai **`server.exe`** di dalam folder `client/assets/bin/`.
+Tersedia aplikasi desktop siap pakai **`SamConnectedServer.exe`** di root folder dan **`client/assets/bin/server.exe`**.
 
-#### Opsi 1: Menggunakan Script Cepat (Sangat Mudah)
-Cukup klik ganda (double-click) file **`start_server.bat`** di folder root proyek.
-- Server otomatis aktif di port `8080`.
-- Lokasi penyimpanan default foto ada di `%USERPROFILE%\Pictures\SamConnectedBackup`.
-- Zeroconf mDNS aktif sehingga iPhone / Android langsung mengenali server di jaringan Wi-Fi lokal.
+#### 🚀 Cara Menjalankan (Sangat Mudah):
+Cukup klik ganda (double-click) **`SamConnectedServer.exe`** atau **`start_server.bat`** di folder root proyek.
+- **Antarmuka Desktop Native Lengkap**: Jendela aplikasi GUI langsung terbuka (persis seperti di MacBook).
+- **Dashboard Host Server**: Menampilkan alamat IP lokal Wi-Fi, port `8080`, status mDNS auto-discovery, dan live console logs.
+- **Pemilih Disk / Folder (HDD Picker)**: Anda bisa langsung memilih disk mana saja (`C:`, `D:`, `E:`, `F:`, atau Harddisk Eksternal 2TB/4TB) melalui tombol **"Ganti Folder / Disk"** yang memunculkan dialog Windows Explorer resmi. Lokasi pilihan Anda otomatis tersimpan.
+- **Galeri Server (Google Photos-style)**: Dilengkapi tab Galeri bawaan dengan timeline foto/video, filter (Foto, Video, Favorit), search, dan Lightbox Viewer interaktif (zoom, detail EXIF kamera/resolusi/ukuran/SHA-256, unduh file asli, dan hapus).
+- **Akses Fleksibel**: Selain lewat jendela aplikasi di Windows, antarmuka ini juga bisa diakses langsung via browser dari laptop/tablet di jaringan Wi-Fi lokal melalui `http://[IP-PC]:8080`.
 
-#### Opsi 2: Menjalankan Langsung via Command Prompt / PowerShell
+#### Menjalankan via Command Line (Headless / Mode Server Background):
+Jika ingin menjalankan tanpa tampilan antarmuka (mode CLI daemon):
 ```powershell
-# Menggunakan binary siap pakai
-.\client\assets\bin\server.exe -port 8080 -storage "D:\FotoBackup"
-
-# Atau jika ingin menjalankan langsung dari kode sumber Go
-cd server
-go run ./cmd/api -port 8080 -storage "D:\FotoBackup"
+.\SamConnectedServer.exe -cli -port 8080 -storage "D:\FotoBackup"
 ```
-
-#### Opsi 3: Menggunakan GUI Desktop Flutter (Windows)
-```powershell
-cd client
-flutter run -d windows
-```
-- Pilih **Mode Server / Host Storage**.
-- Tentukan direktori penyimpanan via folder picker.
-- Klik **Nyalakan Server**.
-
----
 
 ### B. Menjalankan sebagai Server di MacBook (macOS)
 

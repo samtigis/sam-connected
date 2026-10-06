@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sam Connected - Host Storage Dashboard</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <!-- App Shell -->
+  <div class="app-container">
+    <!-- Top Navigation Bar -->
+    <header class="top-nav">
+      <div class="nav-brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">Sam Connected</div>
+          <div class="brand-subtitle">Host Storage Server (Windows)</div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs">
+        <button class="tab-btn active" data-tab="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          Dashboard Server
+        </button>
+        <button class="tab-btn" data-tab="gallery">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          Galeri Server
+          <span class="badge" id="badgeTotalMedia">0</span>
+        </button>
+        <button class="tab-btn" data-tab="settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Panduan & Setup
+        </button>
+      </nav>
+
+      <div class="nav-actions">
+        <div class="status-indicator">
+          <span class="pulse-dot"></span>
+          <span id="serverStatusText">Engine Aktif :8080</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btnOpenExplorerNav" title="Buka Folder Penyimpanan di File Explorer">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+          </svg>
+          Buka Folder
+        </button>
+        <button class="btn btn-icon btn-sm" id="btnAbout" title="Tentang Aplikasi">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Views -->
+    <main class="main-body">
+      <!-- 1. DASHBOARD VIEW -->
+      <section class="tab-view active" id="view-dashboard">
+        <div class="dashboard-grid">
+          <!-- Left Column: Controls & Metrics -->
+          <div class="dash-left">
+            <!-- Network Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                  </svg>
+                  Alamat Akses Jaringan Lokal (Wi-Fi)
+                </div>
+                <span class="badge badge-success">Siap Backup</span>
+              </div>
+              <div class="ip-box">
+                <code id="apiUrlText">http://127.0.0.1:8080/api/v1</code>
+                <button class="btn btn-sm btn-outline" id="btnCopyApiUrl" title="Salin Alamat">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  Salin
+                </button>
+              </div>
+              <div class="mdns-info">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 11a9 9 0 0 1 9 9"></path>
+                  <path d="M4 4a16 16 0 0 1 16 16"></path>
+                  <circle cx="5" cy="19" r="1"></circle>
+                </svg>
+                <span>mDNS Auto-Discovery: <strong>_photobackup._tcp (Port 8080)</strong> — HP langsung mengenali PC ini tanpa input IP manual.</span>
+              </div>
+            </div>
+
+            <!-- Storage & Folder Management Card -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                  Kapasitas Penyimpanan (HDD / SSD)
+                </div>
+                <div class="disk-percentage" id="diskUsagePercent">0%</div>
+              </div>
+
+              <!-- Visual Progress Bar -->
+              <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="diskProgressFill" style="width: 0%;"></div>
+              </div>
+              <div class="disk-stats-row">
+                <span id="diskUsedText">Terpakai: 0 GB</span>
+                <span id="diskFreeText">Sisa Bebas: 0 GB</span>
+              </div>
+
+              <hr class="divider">
+
+              <!-- Folder Picker Section -->
+              <div class="storage-picker-section">
+                <div class="section-label">Lokasi Folder Penyimpanan Aktif:</div>
+                <div class="folder-path-display">
+                  <div class="folder-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                  </div>
+                  <div class="folder-path-text" id="storagePathDisplay">Memuat lokasi...</div>
+                </div>
+
+                <div class="folder-actions">
+                  <button class="btn btn-primary" id="btnChangeStorageFolder">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                    Ganti Folder / Disk (Pilih Drive)
+                  </button>
+                  <button class="btn btn-secondary" id="btnOpenInExplorer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                      <polyline points="15 3 21 3 21 9"></polyline>
+                      <line x1="10" y1="14" x2="21" y2="3"></line>
+                    </svg>
+                    Buka di File Explorer
+                  </button>
+                </div>
+                <div class="helper-text">
+                  Anda bisa memilih folder di drive mana saja (C:, D:, E:, F:, atau Harddisk Eksternal 2TB/4TB). Foto & video dari iPhone/Android akan otomatis disimpan rapi ke folder ini.
+                </div>
+              </div>
+            </div>
+
+            <!-- Stats Summary Cards -->
+            <div class="stats-row">
+              <div class="stat-card">
+                <div class="stat-number" id="statPhotosCount">0</div>
+                <div class="stat-label">Foto Tersimpan</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number" id="statVideosCount">0</div>
+                <div class="stat-label">Video Tersimpan</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-number" id="statTotalSize">0 B</div>
+                <div class="stat-label">Ukuran Total File</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Live Server Activity Logs -->
+          <div class="dash-right">
+            <div class="card log-card">
+              <div class="card-header">
+                <div class="card-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                  </svg>
+                  Live Log Aktivitas Server
+                </div>
+                <div class="log-controls">
+                  <button class="btn btn-sm btn-icon" id="btnClearLogs" title="Bersihkan Tampilan Log">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"></polyline>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                  <label class="checkbox-label" title="Otomatis gulir ke bawah">
+                    <input type="checkbox" id="chkAutoScroll" checked>
+                    <span>Auto-scroll</span>
+                  </label>
+                </div>
+              </div>
+              <div class="terminal-body" id="logTerminal">
+                <div class="log-line info">[SISTEM] Memulai Sam Connected Host Server GUI...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. GALLERY VIEW -->
+      <section class="tab-view" id="view-gallery">
+        <div class="gallery-container">
+          <!-- Gallery Controls -->
+          <div class="gallery-header">
+            <div class="filter-pills">
+              <button class="filter-pill active" data-filter="all">Semua</button>
+              <button class="filter-pill" data-filter="image">📷 Foto</button>
+              <button class="filter-pill" data-filter="video">🎥 Video</button>
+              <button class="filter-pill" data-filter="favorite">⭐ Favorit</button>
+            </div>
+
+            <div class="gallery-search">
+              <input type="text" id="gallerySearchInput" placeholder="Cari nama file foto atau device ID...">
+              <button class="btn btn-sm btn-secondary" id="btnRefreshGallery">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                Muat Ulang
+              </button>
+            </div>
+          </div>
+
+          <!-- Gallery Grid -->
+          <div class="gallery-grid" id="galleryGrid">
+            <!-- Media cards populated dynamically via app.js -->
+          </div>
+
+          <!-- Empty Gallery State -->
+          <div class="empty-state" id="galleryEmptyState" style="display: none;">
+            <div class="empty-icon">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </div>
+            <h3>Belum Ada Foto atau Video Tersimpan</h3>
+            <p>Buka aplikasi Sam Connected di HP (iPhone atau Android), sambungkan ke Wi-Fi yang sama, lalu mulai pencadangan. Foto & video akan langsung muncul di sini!</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. SETTINGS & GUIDE VIEW -->
+      <section class="tab-view" id="view-settings">
+        <div class="settings-container">
+          <div class="settings-card">
+            <h2>📱 Panduan Menghubungkan HP (iPhone & Android)</h2>
+            <div class="guide-steps">
+              <div class="step-card">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                  <h4>Satu Jaringan Wi-Fi</h4>
+                  <p>Pastikan iPhone / Android dan PC Windows Anda terhubung ke jaringan Wi-Fi lokal yang sama.</p>
+                </div>
+              </div>
+              <div class="step-card">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                  <h4>Buka Aplikasi Client</h4>
+                  <p>Buka aplikasi Sam Connected di HP Anda. Pilih mode <strong>Client / Uploader</strong>.</p>
+                </div>
+              </div>
+              <div class="step-card">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                  <h4>Auto-Discovery mDNS</h4>
+                  <p>Aplikasi di HP akan otomatis mendeteksi server ini (<em>SamConnectedStorage</em>) tanpa perlu mengetik IP manual. Tekan "Hubungkan" dan foto akan mulai dicadangkan secara lokal!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <h2>🛡️ Mengapa Sam Connected?</h2>
+            <ul class="feature-list">
+              <li><strong>Privasi 100%</strong>: Foto dan video Anda tidak pernah menyentuh cloud publik (Google Photos / iCloud).</li>
+              <li><strong>Kecepatan Wi-Fi Lokal</strong>: Backup berjalan dengan kecepatan maksimal router lokal (hingga ratusan Mbps).</li>
+              <li><strong>Bebas Biaya Langganan</strong>: Anda dapat mencadangkan hingga puluhan Terabyte ke harddisk pribadi tanpa biaya bulanan.</li>
+              <li><strong>Integritas File SHA-256</strong>: Mencegah duplikasi file dan memastikan file tidak rusak.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Lightbox Viewer Modal -->
+  <div class="lightbox-modal" id="lightboxModal">
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+    <div class="lightbox-content">
+      <!-- Top controls -->
+      <div class="lightbox-header">
+        <span class="lightbox-title" id="lightboxFileName">foto.jpg</span>
+        <div class="lightbox-actions">
+          <button class="btn btn-icon btn-sm" id="btnLightboxFavorite" title="Tandai Favorit">⭐</button>
+          <a class="btn btn-icon btn-sm" id="btnLightboxDownload" title="Unduh File Asli" download>💾</a>
+          <button class="btn btn-icon btn-sm btn-danger" id="btnLightboxDelete" title="Hapus Media">🗑️</button>
+          <button class="btn btn-icon btn-sm" id="btnLightboxClose" title="Tutup (Esc)">✕</button>
+        </div>
+      </div>
+
+      <!-- Media viewport -->
+      <div class="lightbox-body">
+        <button class="lightbox-nav-btn prev" id="btnLightboxPrev" title="Sebelumnya (←)">‹</button>
+        <div class="lightbox-media-container" id="lightboxMediaContainer">
+          <!-- Img or Video injected -->
+        </div>
+        <button class="lightbox-nav-btn next" id="btnLightboxNext" title="Berikutnya (→)">›</button>
+      </div>
+
+      <!-- EXIF Metadata Footer -->
+      <div class="lightbox-meta" id="lightboxMeta">
+        <div class="meta-item">
+          <span class="meta-label">Tanggal Diambil:</span>
+          <span class="meta-val" id="metaTakenAt">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Kamera / Device:</span>
+          <span class="meta-val" id="metaDevice">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Resolusi:</span>
+          <span class="meta-val" id="metaResolution">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Ukuran:</span>
+          <span class="meta-val" id="metaSize">-</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">SHA-256:</span>
+          <span class="meta-val hash" id="metaHash">-</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

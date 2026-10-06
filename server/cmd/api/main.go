@@ -7,28 +7,50 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
+	"github.com/samtigis/sam-connected/server/internal/config"
 	"github.com/samtigis/sam-connected/server/internal/database"
 	"github.com/samtigis/sam-connected/server/internal/discovery"
+	"github.com/samtigis/sam-connected/server/internal/gui"
 	"github.com/samtigis/sam-connected/server/internal/handler"
+	"github.com/samtigis/sam-connected/server/internal/logbuffer"
 	"github.com/samtigis/sam-connected/server/internal/service"
+	"github.com/samtigis/sam-connected/server/internal/web"
 )
 
 func main() {
+	// Hook log output into GUI log buffer and standard output
+	logWriter := logbuffer.NewWriter(logbuffer.DefaultBuffer, os.Stdout)
+	log.SetOutput(logWriter)
+
+	// Load persistent configuration
+	configSvc := config.NewConfigService()
+	savedCfg := configSvc.Get()
+
 	// Parse CLI flags and environment variables
-	portFlag := flag.Int("port", getEnvInt("PORT", 8080), "Server port")
-	storageFlag := flag.String("storage", getEnv("STORAGE_DIR", "./storage"), "Base storage directory")
-	dbFlag := flag.String("db", getEnv("DB_PATH", ""), "Path to SQLite database file")
+	portFlag := flag.Int("port", getEnvInt("PORT", savedCfg.Port), "Server port")
+	storageFlag := flag.String("storage", getEnv("STORAGE_DIR", savedCfg.StoragePath), "Base storage directory")
+	dbFlag := flag.String("db", getEnv("DB_PATH", savedCfg.DBPath), "Path to SQLite database file")
 	mdnsNameFlag := flag.String("mdns-name", getEnv("MDNS_NAME", "SamConnectedStorage"), "mDNS instance broadcast name")
+	headlessFlag := flag.Bool("headless", false, "Run in headless mode without desktop GUI")
+	cliFlag := flag.Bool("cli", false, "Alias for -headless")
 	flag.Parse()
+
+	isHeadless := *headlessFlag || *cliFlag || savedCfg.Headless
+	if !isHeadless {
+		// Immediately hide black console window in GUI mode
+		gui.HideConsoleWindow()
+	}
 
 	// Default database file inside storage directory if not specified
 	dbPath := *dbFlag
@@ -68,12 +90,13 @@ func main() {
 		ReadTimeout:           30 * time.Minute,       // Generous timeout for large video uploads
 		WriteTimeout:          30 * time.Minute,
 		ServerHeader:          "SamConnected-BackupEngine/1.0",
-		DisableStartupMessage: false,
+		DisableStartupMessage: true,
 	})
 
 	// Global Middlewares
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
+		Output:     logWriter,
 		Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
 		TimeFormat: "15:04:05",
 		TimeZone:   "Local",
@@ -88,12 +111,26 @@ func main() {
 	healthHandler := handler.NewHealthHandler(*storageFlag)
 	syncHandler := handler.NewSyncHandler(db, storageSvc)
 	mediaHandler := handler.NewMediaHandler(db, storageSvc, thumbSvc)
+	systemHandler := handler.NewSystemHandler(configSvc, storageSvc, healthHandler, db, func(newPath string) {
+		log.Printf("[STORAGE] Storage location updated to: %s", newPath)
+	})
 
 	// 6. Register API Routes
 	api := app.Group("/api/v1")
 	{
 		// Ping & Disk usage
 		api.Get("/ping", healthHandler.Ping)
+
+		// System & GUI integration endpoints
+		systemGroup := api.Group("/system")
+		{
+			systemGroup.Get("/config", systemHandler.GetConfig)
+			systemGroup.Post("/choose-folder", systemHandler.ChooseFolder)
+			systemGroup.Post("/set-folder", systemHandler.SetFolder)
+			systemGroup.Post("/open-folder", systemHandler.OpenFolder)
+			systemGroup.Get("/logs", systemHandler.GetLogs)
+			systemGroup.Post("/clear-logs", systemHandler.ClearLogs)
+		}
 
 		// Sync endpoints
 		syncGroup := api.Group("/sync")
@@ -115,27 +152,61 @@ func main() {
 		}
 	}
 
-	// 7. Setup Graceful Shutdown channel
+	// 7. Serve Embedded Desktop Web UI at root (/)
+	app.Use("/", filesystem.New(filesystem.Config{
+		Root:   web.GetStaticFileSystem(),
+		Index:  "index.html",
+		Browse: false,
+	}))
+
+	// 8. Setup Graceful Shutdown channel
 	shutdownChan := make(chan os.Signal, 1)
 	signal.Notify(shutdownChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
 
+	serverAddr := fmt.Sprintf("127.0.0.1:%d", *portFlag)
+	guiURL := fmt.Sprintf("http://127.0.0.1:%d", *portFlag)
+
 	go func() {
-		addr := fmt.Sprintf("0.0.0.0:%d", *portFlag)
-		log.Printf("[SERVER] Listening on http://%s", addr)
-		if err := app.Listen(addr); err != nil {
+		bindAddr := fmt.Sprintf("0.0.0.0:%d", *portFlag)
+		log.Printf("[SERVER] Listening on http://%s", bindAddr)
+		if err := app.Listen(bindAddr); err != nil {
 			log.Printf("[SERVER] Server closed: %v", err)
 		}
 	}()
 
-	// Wait for shutdown signal
-	sig := <-shutdownChan
-	log.Printf("[SHUTDOWN] Received signal: %s. Initiating graceful termination...", sig)
+	// Give the server a brief moment to bind before starting GUI
+	time.Sleep(350 * time.Millisecond)
+
+	// 9. Launch Native Desktop GUI Window on Windows (if not headless)
+	if !isHeadless {
+		log.Printf("[GUI] Launching native Windows Host Dashboard window (%s)...", guiURL)
+		runtime.LockOSThread()
+		gui.LaunchGUI(
+			guiURL,
+			*storageFlag,
+			func() string {
+				p, _ := gui.PickFolderDialog(*storageFlag)
+				return p
+			},
+			func(path string) {
+				_ = gui.OpenFolderInExplorer(path)
+			},
+			func() {
+				log.Printf("[GUI] Native window closed by user. Exiting application...")
+			},
+		)
+	} else {
+		log.Printf("[INFO] Running in headless/CLI mode. Dashboard available at: %s", serverAddr)
+		// Wait for shutdown signal
+		sig := <-shutdownChan
+		log.Printf("[SHUTDOWN] Received signal: %s. Initiating graceful termination...", sig)
+	}
 
 	// Stop mDNS broadcast first so clients discover server is closing
 	mdnsSvc.Stop()
 
-	// Shutdown Fiber web engine with 10s deadline
-	if err := app.ShutdownWithTimeout(10 * time.Second); err != nil {
+	// Shutdown Fiber web engine with 5s deadline
+	if err := app.ShutdownWithTimeout(5 * time.Second); err != nil {
 		log.Printf("[SHUTDOWN] Fiber shutdown error: %v", err)
 	}
 

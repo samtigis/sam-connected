@@ -1,0 +1,391 @@
+// =========================================================
+// Sam Connected - Host Storage Server Web / Desktop GUI Logic
+// =========================================================
+
+const state = {
+  activeTab: 'dashboard',
+  currentConfig: null,
+  mediaItems: [],
+  activeFilter: 'all',
+  searchQuery: '',
+  lightboxIndex: -1,
+  logLinesCount: 0,
+};
+
+// Utilities
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let count = bytes;
+  while (count >= 1024 && i < units.length - 1) {
+    count /= 1024;
+    i++;
+  }
+  return `${count.toFixed(1)} ${units[i]}`;
+}
+
+function showToast(message) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// 1. Tab Navigation
+function setupTabs() {
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      switchTab(tabName);
+    });
+  });
+}
+
+function switchTab(tabName) {
+  state.activeTab = tabName;
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.tab-view').forEach(view => {
+    view.classList.toggle('active', view.id === `view-${tabName}`);
+  });
+
+  if (tabName === 'gallery') {
+    loadGallery();
+  }
+}
+
+// 2. Fetch Server Config & Disk Metrics
+async function fetchConfig() {
+  try {
+    const res = await fetch('/api/v1/system/config');
+    if (!res.ok) return;
+    const data = await res.json();
+    state.currentConfig = data;
+
+    // Update UI elements
+    document.getElementById('apiUrlText').textContent = data.api_url;
+    document.getElementById('storagePathDisplay').textContent = data.storage_path;
+
+    // Disk Metrics
+    if (data.disk) {
+      const usedPct = data.disk.used_percent || 0;
+      document.getElementById('diskUsagePercent').textContent = `${usedPct.toFixed(1)}%`;
+      document.getElementById('diskProgressFill').style.width = `${Math.min(usedPct, 100)}%`;
+      if (usedPct > 90) {
+        document.getElementById('diskProgressFill').style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
+      }
+      document.getElementById('diskUsedText').textContent = `Terpakai: ${formatBytes(data.disk.used_bytes)} (${usedPct.toFixed(1)}%)`;
+      document.getElementById('diskFreeText').textContent = `Sisa Bebas: ${formatBytes(data.disk.free_bytes)}`;
+    }
+
+    // Media Counters
+    if (data.stats) {
+      document.getElementById('statPhotosCount').textContent = data.stats.total_images;
+      document.getElementById('statVideosCount').textContent = data.stats.total_videos;
+      document.getElementById('statTotalSize').textContent = formatBytes(data.stats.total_bytes);
+      document.getElementById('badgeTotalMedia').textContent = data.stats.total_media;
+    }
+  } catch (err) {
+    console.warn('Failed to load system config:', err);
+  }
+}
+
+// 3. Folder Picker Dialog & File Explorer
+function setupStorageActions() {
+  // Ganti Folder Button
+  document.getElementById('btnChangeStorageFolder').addEventListener('click', async () => {
+    showToast('Membuka dialog pemilih folder Windows...');
+    try {
+      const res = await fetch('/api/v1/system/choose-folder', { method: 'POST' });
+      const data = await res.json();
+      if (data.selected && data.path) {
+        // Save new folder
+        const saveRes = await fetch('/api/v1/system/set-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path }),
+        });
+        if (saveRes.ok) {
+          showToast(`Lokasi penyimpanan diubah: ${data.path}`);
+          await fetchConfig();
+        } else {
+          showToast('Gagal mengubah lokasi penyimpanan.');
+        }
+      }
+    } catch (err) {
+      showToast('Gagal memproses pemilih folder: ' + err.message);
+    }
+  });
+
+  // Open in File Explorer Buttons
+  const openExplorer = async () => {
+    try {
+      await fetch('/api/v1/system/open-folder', { method: 'POST' });
+      showToast('Membuka File Explorer...');
+    } catch (err) {
+      showToast('Gagal membuka File Explorer.');
+    }
+  };
+
+  document.getElementById('btnOpenInExplorer').addEventListener('click', openExplorer);
+  document.getElementById('btnOpenExplorerNav').addEventListener('click', openExplorer);
+
+  // Copy API URL
+  document.getElementById('btnCopyApiUrl').addEventListener('click', () => {
+    const url = document.getElementById('apiUrlText').textContent;
+    navigator.clipboard.writeText(url);
+    showToast('Alamat API disalin ke clipboard');
+  });
+
+  // About Button
+  document.getElementById('btnAbout').addEventListener('click', () => {
+    alert("📸 Sam Connected — Host Storage Server (Windows Edition)\nVersi: 1.0.0\n\nSolusi pencadangan foto & video lokal tanpa cloud publik.\nDikembangkan oleh Sam Tigis.");
+  });
+}
+
+// 4. Live Server Logs Stream / Polling
+async function pollLogs() {
+  try {
+    const res = await fetch('/api/v1/system/logs');
+    if (!res.ok) return;
+    const data = await res.json();
+    const terminal = document.getElementById('logTerminal');
+
+    if (data.logs && data.logs.length > 0) {
+      terminal.innerHTML = '';
+      data.logs.forEach(entry => {
+        const line = document.createElement('div');
+        line.className = 'log-line';
+
+        const msg = entry.message;
+        if (msg.includes('[INIT]') || msg.includes('[SERVER]')) {
+          line.classList.add('info');
+        } else if (msg.includes('200') || msg.includes('[DB]') || msg.includes('success')) {
+          line.classList.add('success');
+        } else if (msg.includes('[WARN]') || msg.includes('404')) {
+          line.classList.add('warn');
+        } else if (msg.includes('[FATAL]') || msg.includes('500') || msg.includes('error')) {
+          line.classList.add('error');
+        }
+
+        line.textContent = `[${entry.timestamp || entry.Timestamp}] ${msg}`;
+        terminal.appendChild(line);
+      });
+
+      const autoScroll = document.getElementById('chkAutoScroll').checked;
+      if (autoScroll) {
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+    }
+  } catch (err) {
+    // Ignore polling errors
+  }
+}
+
+document.getElementById('btnClearLogs').addEventListener('click', async () => {
+  await fetch('/api/v1/system/clear-logs', { method: 'POST' });
+  document.getElementById('logTerminal').innerHTML = '<div class="log-line info">[SISTEM] Log dibersihkan.</div>';
+  showToast('Log dibersihkan');
+});
+
+// 5. Gallery Management (Google Photos Style)
+async function loadGallery() {
+  const grid = document.getElementById('galleryGrid');
+  const emptyState = document.getElementById('galleryEmptyState');
+
+  let url = `/api/v1/media?limit=100`;
+  if (state.activeFilter === 'image' || state.activeFilter === 'video') {
+    url += `&type=${state.activeFilter}`;
+  } else if (state.activeFilter === 'favorite') {
+    url += `&favorite=true`;
+  }
+  if (state.searchQuery) {
+    url += `&search=${encodeURIComponent(state.searchQuery)}`;
+  }
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    state.mediaItems = data.data || data.items || [];
+
+    grid.innerHTML = '';
+
+    if (state.mediaItems.length === 0) {
+      grid.style.display = 'none';
+      emptyState.style.display = 'block';
+      return;
+    }
+
+    grid.style.display = 'grid';
+    emptyState.style.display = 'none';
+
+    state.mediaItems.forEach((item, index) => {
+      const card = document.createElement('div');
+      card.className = 'media-card';
+      card.dataset.index = index;
+
+      const isVideo = item.mime_type && item.mime_type.startsWith('video/');
+      const thumbUrl = `/api/v1/media/${item.id}/thumb`;
+
+      card.innerHTML = `
+        <img class="media-thumb" src="${thumbUrl}" loading="lazy" alt="${item.file_name}" onerror="this.src='/favicon.ico';">
+        ${isVideo ? `<div class="media-badge video">▶ Video</div>` : ''}
+        ${item.is_favorite ? `<div class="media-badge fav">⭐</div>` : ''}
+        <div class="media-overlay">
+          <div>${item.file_name}</div>
+          <div>${formatBytes(item.file_size)}</div>
+        </div>
+      `;
+
+      card.addEventListener('click', () => openLightbox(index));
+      grid.appendChild(card);
+    });
+  } catch (err) {
+    console.warn('Gagal memuat galeri:', err);
+  }
+}
+
+// Gallery Filters & Search
+function setupGalleryControls() {
+  document.querySelectorAll('.filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      state.activeFilter = pill.dataset.filter;
+      loadGallery();
+    });
+  });
+
+  const searchInput = document.getElementById('gallerySearchInput');
+  let searchTimer;
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.searchQuery = e.target.value.trim();
+      loadGallery();
+    }, 300);
+  });
+
+  document.getElementById('btnRefreshGallery').addEventListener('click', () => {
+    loadGallery();
+    showToast('Galeri dimuat ulang');
+  });
+}
+
+// 6. Interactive Lightbox Viewer
+function openLightbox(index) {
+  if (index < 0 || index >= state.mediaItems.length) return;
+  state.lightboxIndex = index;
+  const item = state.mediaItems[index];
+
+  const modal = document.getElementById('lightboxModal');
+  const mediaContainer = document.getElementById('lightboxMediaContainer');
+  const isVideo = item.mime_type && item.mime_type.startsWith('video/');
+  const rawUrl = `/api/v1/media/${item.id}/raw`;
+
+  document.getElementById('lightboxFileName').textContent = item.file_name;
+  document.getElementById('metaTakenAt').textContent = item.taken_at ? new Date(item.taken_at).toLocaleString('id-ID') : '-';
+  document.getElementById('metaDevice').textContent = item.device_id || 'Unknown';
+  document.getElementById('metaResolution').textContent = (item.width && item.height) ? `${item.width} × ${item.height} px` : '-';
+  document.getElementById('metaSize').textContent = formatBytes(item.file_size);
+  document.getElementById('metaHash').textContent = item.hash || '-';
+
+  // Download & Favorite buttons
+  const dlBtn = document.getElementById('btnLightboxDownload');
+  dlBtn.href = rawUrl;
+  dlBtn.download = item.file_name;
+
+  const favBtn = document.getElementById('btnLightboxFavorite');
+  favBtn.textContent = item.is_favorite ? '⭐' : '☆';
+  favBtn.onclick = async () => {
+    await fetch(`/api/v1/media/${item.id}/favorite`, { method: 'POST' });
+    item.is_favorite = !item.is_favorite;
+    favBtn.textContent = item.is_favorite ? '⭐' : '☆';
+    loadGallery();
+  };
+
+  // Delete button
+  const delBtn = document.getElementById('btnLightboxDelete');
+  delBtn.onclick = async () => {
+    if (confirm(`Yakin ingin menghapus berkas "${item.file_name}" dari server?`)) {
+      await fetch(`/api/v1/media/${item.id}`, { method: 'DELETE' });
+      showToast('Media dihapus dari server');
+      closeLightbox();
+      loadGallery();
+      fetchConfig();
+    }
+  };
+
+  if (isVideo) {
+    mediaContainer.innerHTML = `
+      <video src="${rawUrl}" controls autoplay style="max-height: 100%; max-width: 100%;"></video>
+    `;
+  } else {
+    mediaContainer.innerHTML = `
+      <img src="${rawUrl}" alt="${item.file_name}" style="max-height: 100%; max-width: 100%;">
+    `;
+  }
+
+  modal.classList.add('active');
+}
+
+function closeLightbox() {
+  const modal = document.getElementById('lightboxModal');
+  modal.classList.remove('active');
+  document.getElementById('lightboxMediaContainer').innerHTML = '';
+  state.lightboxIndex = -1;
+}
+
+function setupLightboxControls() {
+  document.getElementById('btnLightboxClose').addEventListener('click', closeLightbox);
+  document.getElementById('lightboxBackdrop').addEventListener('click', closeLightbox);
+
+  document.getElementById('btnLightboxPrev').addEventListener('click', () => {
+    if (state.lightboxIndex > 0) {
+      openLightbox(state.lightboxIndex - 1);
+    }
+  });
+
+  document.getElementById('btnLightboxNext').addEventListener('click', () => {
+    if (state.lightboxIndex < state.mediaItems.length - 1) {
+      openLightbox(state.lightboxIndex + 1);
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('lightboxModal');
+    if (!modal.classList.contains('active')) return;
+
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft' && state.lightboxIndex > 0) {
+      openLightbox(state.lightboxIndex - 1);
+    }
+    if (e.key === 'ArrowRight' && state.lightboxIndex < state.mediaItems.length - 1) {
+      openLightbox(state.lightboxIndex + 1);
+    }
+  });
+}
+
+// Initialize Application
+document.addEventListener('DOMContentLoaded', () => {
+  setupTabs();
+  setupStorageActions();
+  setupGalleryControls();
+  setupLightboxControls();
+
+  fetchConfig();
+  pollLogs();
+
+  // Periodic Refresh
+  setInterval(fetchConfig, 5000);
+  setInterval(pollLogs, 2500);
+});
