@@ -126,9 +126,9 @@ class LocalDatabase {
     );
   }
 
-  Future<void> markSyncedByAssetId(String assetId, {int serverId = 0}) async {
+  Future<void> markSyncedByAssetId(String assetId, {int serverId = 0, String? hash}) async {
     final db = await database;
-    await db.update(
+    final count = await db.update(
       'synced_assets',
       {
         'status': SyncStatus.synced.name,
@@ -139,6 +139,27 @@ class LocalDatabase {
       where: 'asset_id = ?',
       whereArgs: [assetId],
     );
+    if (count == 0) {
+      await markAssetSynced(assetId, hash ?? '', serverId: serverId);
+    }
+  }
+
+  Future<Map<int, String>> getServerIdToAssetIdMap() async {
+    final db = await database;
+    final results = await db.query(
+      'synced_assets',
+      columns: ['server_id', 'asset_id'],
+      where: 'server_id IS NOT NULL AND server_id > 0',
+    );
+    final map = <int, String>{};
+    for (final row in results) {
+      final sId = row['server_id'] as int?;
+      final aId = row['asset_id'] as String?;
+      if (sId != null && aId != null) {
+        map[sId] = aId;
+      }
+    }
+    return map;
   }
 
   Future<void> markAssetSynced(String assetId, String hash, {int serverId = 0}) async {

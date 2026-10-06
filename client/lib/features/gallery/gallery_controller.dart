@@ -44,6 +44,8 @@ class GalleryController extends ChangeNotifier {
   List<GalleryMediaItem> _serverMedia = [];
   List<TimelineDateGroup> _serverTimelineGroups = [];
   int _serverTotalCount = 0;
+  List<Map<String, dynamic>> _serverDevices = [];
+  String? _selectedDeviceId;
 
   GalleryViewMode get viewMode => _viewMode;
   GalleryFilter get currentFilter => _currentFilter;
@@ -52,6 +54,8 @@ class GalleryController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get hasPermission => _hasPermission;
   String get serverBaseUrl => _apiClient.baseUrl;
+  List<Map<String, dynamic>> get serverDevices => _serverDevices;
+  String? get selectedDeviceId => _selectedDeviceId;
 
   List<GalleryMediaItem> get allMedia =>
       _viewMode == GalleryViewMode.device ? _deviceMedia : _serverMedia;
@@ -69,6 +73,15 @@ class GalleryController extends ChangeNotifier {
       _viewMode == GalleryViewMode.device ? _deviceUnsyncedCount : 0;
 
   GalleryController(this._apiClient);
+
+  void setSelectedDevice(String? deviceId) {
+    if (_selectedDeviceId == deviceId) return;
+    _selectedDeviceId = deviceId;
+    notifyListeners();
+    if (_viewMode == GalleryViewMode.server) {
+      _fetchServerGallery();
+    }
+  }
 
   void setViewMode(GalleryViewMode mode) {
     if (_viewMode == mode) return;
@@ -188,11 +201,25 @@ class GalleryController extends ChangeNotifier {
       if (_currentFilter == GalleryFilter.photos) typeParam = 'image';
       if (_currentFilter == GalleryFilter.videos) typeParam = 'video';
 
-      final res = await _apiClient.getMediaTimeline(type: typeParam);
+      // 1. Fetch connected/registered devices
+      try {
+        _serverDevices = await _apiClient.getDevices();
+      } catch (_) {}
+
+      // 2. Fetch timeline filtered by deviceId if set
+      final res = await _apiClient.getMediaTimeline(
+        type: typeParam,
+        deviceId: _selectedDeviceId,
+      );
       final groupsData = res['groups'] as List<dynamic>? ?? [];
       final int serverTotal = (res['total_media'] as num?)?.toInt() ?? 0;
 
-      final List<GalleryMediaItem> items = [];
+      // 3. Multi-strategy local asset resolution
+      final assetIdByServerId = await _localDb.getServerIdToAssetIdMap();
+      final Map<String, AssetEntity> localByAssetId = {
+        for (final m in _deviceMedia)
+          if (m.localEntity != null) m.id: m.localEntity!
+      };
       final Map<String, AssetEntity> localByTitle = {
         for (final m in _deviceMedia)
           if (m.localEntity != null) m.title.toLowerCase(): m.localEntity!
@@ -202,13 +229,55 @@ class GalleryController extends ChangeNotifier {
           if (m.localEntity != null && m.hash != null) m.hash!: m.localEntity!
       };
 
+      final List<GalleryMediaItem> items = [];
+
       for (final g in groupsData) {
         if (g is Map<String, dynamic>) {
           final itemsRaw = g['items'] as List<dynamic>? ?? [];
           for (final raw in itemsRaw) {
             if (raw is Map<String, dynamic>) {
               final mediaItem = MediaItem.fromJson(raw);
-              final entity = localByHash[mediaItem.hash] ?? localByTitle[mediaItem.fileName.toLowerCase()];
+
+              // Strategy A: Direct SQLite server_id -> asset_id link
+              final matchedAssetId = assetIdByServerId[mediaItem.id];
+              AssetEntity? entity = matchedAssetId != null ? localByAssetId[matchedAssetId] : null;
+
+              // Strategy B: Hash match
+              if (entity == null && mediaItem.hash.isNotEmpty) {
+                entity = localByHash[mediaItem.hash];
+              }
+
+              // Strategy C: Exact or stripped title match
+              if (entity == null) {
+                final fn = mediaItem.fileName.toLowerCase();
+                entity = localByTitle[fn];
+                if (entity == null && fn.contains('.')) {
+                  final withoutExt = fn.substring(0, fn.lastIndexOf('.'));
+                  entity = localByTitle[withoutExt];
+                }
+              }
+
+              // Strategy D: Video duration and taken timestamp match
+              if (entity == null && mediaItem.isVideo && mediaItem.duration > 0) {
+                for (final m in _deviceMedia) {
+                  if (m.isVideo && m.localEntity != null) {
+                    final durDiff = (m.videoDuration.inSeconds - mediaItem.duration.round()).abs();
+                    if (durDiff <= 1) {
+                      if (mediaItem.takenAt != null) {
+                        final timeDiff = (m.createDateTime.difference(mediaItem.takenAt!).inSeconds).abs();
+                        if (timeDiff <= 5) {
+                          entity = m.localEntity;
+                          break;
+                        }
+                      } else {
+                        entity = m.localEntity;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+
               items.add(GalleryMediaItem.fromServerItem(mediaItem).copyWith(localEntity: entity));
             }
           }
@@ -299,14 +368,15 @@ class GalleryController extends ChangeNotifier {
 
       final mediaInfo = uploadRes['media'] as Map<String, dynamic>?;
       final int serverId = (mediaInfo?['id'] as int?) ?? 0;
+      final String finalHash = (mediaInfo?['hash'] as String?) ?? hash;
 
-      await _localDb.markSynced(hash, serverId);
-      await _localDb.markSyncedByAssetId(item.id, serverId: serverId);
+      await _localDb.markSynced(finalHash, serverId);
+      await _localDb.markSyncedByAssetId(item.id, serverId: serverId, hash: finalHash);
 
       // Update in-memory item state to backed up (green checkmark)
       final idx = _deviceMedia.indexWhere((m) => m.id == item.id);
       if (idx != -1) {
-        _deviceMedia[idx] = _deviceMedia[idx].copyWith(isSynced: true, hash: hash);
+        _deviceMedia[idx] = _deviceMedia[idx].copyWith(isSynced: true, hash: finalHash);
         _deviceSyncedCount++;
         if (_deviceUnsyncedCount > 0) _deviceUnsyncedCount--;
         _rebuildDeviceTimeline();

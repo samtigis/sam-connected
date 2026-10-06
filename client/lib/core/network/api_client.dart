@@ -196,6 +196,19 @@ class ApiClient {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Fetch all client devices that have backed up data to the server
+  /// GET /api/v1/devices
+  Future<List<Map<String, dynamic>>> getDevices() async {
+    try {
+      final response = await _dio.get('/devices');
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final list = response.data['devices'] as List<dynamic>? ?? [];
+        return list.whereType<Map<String, dynamic>>().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
   /// Get details of a single media item
   /// GET /api/v1/media/:id
   Future<Map<String, dynamic>> getMediaById(int id) async {

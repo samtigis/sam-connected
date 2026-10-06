@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/samtigis/sam-connected/server/internal/database"
@@ -431,3 +432,32 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 	c.Response().Header.SetContentType(contentType)
 	return err
 }
+
+// GetDevices returns all distinct client devices that have backed up media to the server.
+// GET /api/v1/devices
+func (h *MediaHandler) GetDevices(c *fiber.Ctx) error {
+	type Result struct {
+		DeviceID   string     `json:"device_id"`
+		TotalMedia int        `json:"total_media"`
+		TotalBytes int64      `json:"total_bytes"`
+		LastActive *time.Time `json:"last_active"`
+	}
+	var results []Result
+	err := h.DB.Model(&database.Media{}).
+		Select("device_id, count(*) as total_media, sum(file_size) as total_bytes, max(created_at) as last_active").
+		Group("device_id").
+		Order("last_active desc").
+		Scan(&results).Error
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to query devices: " + err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"devices": results,
+		"count":   len(results),
+	})
+}
+

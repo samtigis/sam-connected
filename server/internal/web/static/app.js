@@ -6,11 +6,26 @@ const state = {
   activeTab: 'dashboard',
   currentConfig: null,
   mediaItems: [],
+  devices: [],
+  selectedDeviceId: '',
   activeFilter: 'all',
   searchQuery: '',
   lightboxIndex: -1,
   logLinesCount: 0,
 };
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, function(m) {
+    return {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[m];
+  });
+}
 
 // Utilities
 function formatBytes(bytes) {
@@ -196,6 +211,86 @@ document.getElementById('btnClearLogs').addEventListener('click', async () => {
   showToast('Log dibersihkan');
 });
 
+// 5. Connected Devices Detection & Management
+async function fetchDevices() {
+  try {
+    const res = await fetch('/api/v1/devices');
+    if (!res.ok) return;
+    const data = await res.json();
+    state.devices = data.devices || [];
+
+    const badge = document.getElementById('badgeDeviceCount');
+    if (badge) {
+      badge.textContent = `${state.devices.length} Perangkat`;
+    }
+
+    // Populate dashboard devices list
+    const container = document.getElementById('devicesListContainer');
+    if (container) {
+      if (state.devices.length === 0) {
+        container.innerHTML = `
+          <div style="font-size: 13px; color: var(--text-muted); text-align: center; padding: 12px;">
+            Belum ada perangkat klien yang terhubung atau melakukan backup.
+          </div>`;
+      } else {
+        container.innerHTML = '';
+        state.devices.forEach(dev => {
+          const item = document.createElement('div');
+          item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; font-size: 13px;';
+          
+          const lastActiveStr = dev.last_active ? new Date(dev.last_active).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-';
+
+          item.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                  <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+              </div>
+              <div>
+                <div style="font-weight: 600; color: var(--text);">${escapeHtml(dev.device_id)}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${dev.total_media} media (${formatBytes(dev.total_bytes)}) • Aktif: ${lastActiveStr}</div>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline btn-view-device-gallery" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 10px; font-size: 12px;">
+              Lihat Galeri
+            </button>
+          `;
+
+          const viewBtn = item.querySelector('.btn-view-device-gallery');
+          viewBtn.addEventListener('click', () => {
+            state.selectedDeviceId = dev.device_id;
+            const select = document.getElementById('galleryDeviceSelect');
+            if (select) select.value = dev.device_id;
+            switchTab('gallery');
+          });
+
+          container.appendChild(item);
+        });
+      }
+    }
+
+    // Populate gallery device dropdown
+    const select = document.getElementById('galleryDeviceSelect');
+    if (select) {
+      const currentVal = state.selectedDeviceId;
+      select.innerHTML = '<option value="">Semua Perangkat</option>';
+      state.devices.forEach(dev => {
+        const opt = document.createElement('option');
+        opt.value = dev.device_id;
+        opt.textContent = `${dev.device_id} (${dev.total_media} media)`;
+        if (dev.device_id === currentVal) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal memuat perangkat:', err);
+  }
+}
+
 // 5. Gallery Management (Google Photos Style)
 async function loadGallery() {
   const grid = document.getElementById('galleryGrid');
@@ -206,6 +301,9 @@ async function loadGallery() {
     url += `&type=${state.activeFilter}`;
   } else if (state.activeFilter === 'favorite') {
     url += `&favorite=true`;
+  }
+  if (state.selectedDeviceId) {
+    url += `&device_id=${encodeURIComponent(state.selectedDeviceId)}`;
   }
   if (state.searchQuery) {
     url += `&search=${encodeURIComponent(state.searchQuery)}`;
@@ -275,6 +373,14 @@ function setupGalleryControls() {
     }, 300);
   });
 
+  const deviceSelect = document.getElementById('galleryDeviceSelect');
+  if (deviceSelect) {
+    deviceSelect.addEventListener('change', (e) => {
+      state.selectedDeviceId = e.target.value;
+      loadGallery();
+    });
+  }
+
   document.getElementById('btnRefreshGallery').addEventListener('click', () => {
     loadGallery();
     showToast('Galeri dimuat ulang');
@@ -290,7 +396,7 @@ function openLightbox(index) {
   const modal = document.getElementById('lightboxModal');
   const mediaContainer = document.getElementById('lightboxMediaContainer');
   const isVideo = item.mime_type && item.mime_type.startsWith('video/');
-  const rawUrl = `/api/v1/media/${item.id}/raw`;
+  const rawUrl = `/api/v1/media/${item.id}/raw/${encodeURIComponent(item.file_name || 'media')}`;
 
   document.getElementById('lightboxFileName').textContent = item.file_name;
   document.getElementById('metaTakenAt').textContent = item.taken_at ? new Date(item.taken_at).toLocaleString('id-ID') : '-';
@@ -383,9 +489,11 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLightboxControls();
 
   fetchConfig();
+  fetchDevices();
   pollLogs();
 
   // Periodic Refresh
   setInterval(fetchConfig, 5000);
+  setInterval(fetchDevices, 6000);
   setInterval(pollLogs, 2500);
 });

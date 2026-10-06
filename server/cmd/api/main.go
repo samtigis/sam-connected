@@ -174,6 +174,9 @@ func main() {
 			mediaGroup.Get("/:id/raw", mediaHandler.GetRaw)
 			mediaGroup.Get("/:id/raw/:filename", mediaHandler.GetRaw)
 		}
+
+		// Device listing & multi-client discovery
+		api.Get("/devices", mediaHandler.GetDevices)
 	}
 
 	// 7. Serve Embedded Desktop Web UI at root (/)

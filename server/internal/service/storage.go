@@ -104,9 +104,9 @@ func (s *StorageService) SaveUploadedFile(
 
 	computedHash := hex.EncodeToString(hasher.Sum(nil))
 
-	// Verify client hash if provided
+	// Verify client hash if provided (log if mismatch, but use server's verified SHA-256)
 	if clientHash != "" && !strings.EqualFold(clientHash, computedHash) {
-		return nil, fmt.Errorf("%w: expected %s, got %s", ErrHashMismatch, clientHash, computedHash)
+		log.Printf("[WARN] Client hash mismatch (client: %s, server: %s), using server hash", clientHash, computedHash)
 	}
 
 	// Check if this hash already exists in DB

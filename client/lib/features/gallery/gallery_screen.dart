@@ -282,8 +282,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 ),
               ],
               bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(48),
-                child: _buildFilterBar(theme, ctrl),
+                preferredSize: Size.fromHeight(ctrl.viewMode == GalleryViewMode.server ? 86 : 48),
+                child: Column(
+                  children: [
+                    if (ctrl.viewMode == GalleryViewMode.server) ...[
+                      _buildDeviceSelectorBar(theme, ctrl),
+                      const SizedBox(height: 2),
+                    ],
+                    _buildFilterBar(theme, ctrl),
+                  ],
+                ),
               ),
             )
           : AppBar(
@@ -339,7 +347,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 ),
               ],
               bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(96),
+                preferredSize: Size.fromHeight(ctrl.viewMode == GalleryViewMode.server ? 142 : 96),
                 child: Column(
                   children: [
                     // View Mode Selector (iPhone vs Server)
@@ -370,7 +378,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    if (ctrl.viewMode == GalleryViewMode.server) ...[
+                      const SizedBox(height: 6),
+                      _buildDeviceSelectorBar(theme, ctrl),
+                    ],
+                    const SizedBox(height: 4),
                     // Filter Chips Row
                     _buildFilterBar(theme, ctrl),
                   ],
@@ -506,6 +518,73 @@ class _GalleryScreenState extends State<GalleryScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDeviceSelectorBar(ThemeData theme, GalleryController ctrl) {
+    final devices = ctrl.serverDevices;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: Text(
+              'Semua Perangkat (${ctrl.totalCount})',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            avatar: const Icon(Icons.devices_rounded, size: 14),
+            selected: ctrl.selectedDeviceId == null,
+            visualDensity: VisualDensity.compact,
+            onSelected: (_) => ctrl.setSelectedDevice(null),
+          ),
+          for (final dev in devices) ...[
+            const SizedBox(width: 6),
+            _buildDeviceChip(theme, ctrl, dev),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceChip(ThemeData theme, GalleryController ctrl, Map<String, dynamic> dev) {
+    final devId = dev['device_id']?.toString() ?? '';
+    final count = (dev['total_media'] as num?)?.toInt() ?? 0;
+    final isSelected = ctrl.selectedDeviceId == devId;
+
+    IconData icon = Icons.smartphone_rounded;
+    String name = devId;
+    final lower = devId.toLowerCase();
+    if (lower.contains('ipad')) {
+      icon = Icons.tablet_mac_rounded;
+      name = 'iPad';
+    } else if (lower.contains('iphone')) {
+      icon = Icons.phone_iphone_rounded;
+      name = 'iPhone';
+    } else if (lower.contains('android')) {
+      icon = Icons.android_rounded;
+      name = 'Android';
+    } else if (lower.contains('windows') || lower.contains('pc')) {
+      icon = Icons.laptop_windows_rounded;
+      name = 'Windows PC';
+    } else if (lower.contains('mac')) {
+      icon = Icons.laptop_mac_rounded;
+      name = 'MacBook';
+    }
+
+    if (devId.contains('_')) {
+      final parts = devId.split('_');
+      if (parts.length > 1) {
+        name = parts.sublist(1).join(' ');
+      }
+    }
+
+    return ChoiceChip(
+      label: Text('$name ($count)', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+      avatar: Icon(icon, size: 14),
+      selected: isSelected,
+      visualDensity: VisualDensity.compact,
+      onSelected: (_) => ctrl.setSelectedDevice(devId),
     );
   }
 
