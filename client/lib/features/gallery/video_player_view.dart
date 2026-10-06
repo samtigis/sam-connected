@@ -70,14 +70,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           } catch (_) {}
         }
 
-        // 2. Otherwise, stream from server with proper Range/MIME headers
+        // 2. Otherwise, stream from server with native AVPlayer Range handling
         if (_controller == null) {
           final String rawUrl = widget.item.serverItem!.rawUrl(widget.serverBaseUrl);
           _controller = VideoPlayerController.networkUrl(
             Uri.parse(rawUrl),
-            httpHeaders: const {
-              'Accept': '*/*',
-            },
           );
         }
       } else {
@@ -87,15 +84,18 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       try {
         await _controller!.initialize();
       } catch (initErr) {
-        // Fallback to base raw url if filename url failed
+        // Fallback to base raw url if video extension url failed
         if (widget.item.isServer && widget.item.serverItem != null) {
           final fallbackUrl = '${widget.serverBaseUrl}/media/${widget.item.id}/raw';
           try {
-            _controller?.dispose();
+            await _controller?.dispose();
             _controller = VideoPlayerController.networkUrl(Uri.parse(fallbackUrl));
             await _controller!.initialize();
-          } catch (_) {
-            throw Exception('Gagal memuat video dari server (${widget.serverBaseUrl}): $initErr');
+          } catch (fallbackErr) {
+            throw Exception(
+              'Gagal memuat video dari server (${widget.serverBaseUrl}): $initErr\n'
+              'Pastikan Sam Connected Server di PC sudah diperbarui dan aktif di jaringan Wi-Fi.',
+            );
           }
         } else {
           rethrow;

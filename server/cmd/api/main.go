@@ -173,7 +173,8 @@ func main() {
 			mediaGroup.Delete("/:id", mediaHandler.Delete)
 			mediaGroup.Get("/:id/thumb", mediaHandler.GetThumbnail)
 			mediaGroup.Get("/:id/raw", mediaHandler.GetRaw)
-			mediaGroup.Get("/:id/raw/:filename", mediaHandler.GetRaw)
+			mediaGroup.Get("/:id/raw/*", mediaHandler.GetRaw)
+			mediaGroup.Get("/:id/raw*", mediaHandler.GetRaw)
 		}
 
 		// Device listing & multi-client discovery
@@ -183,6 +184,14 @@ func main() {
 		app.Get("/devices", mediaHandler.GetDevices)
 		app.Get("/api/devices", mediaHandler.GetDevices)
 		app.Post("/api/v1/devices/:id/name", mediaHandler.SetDeviceName)
+		app.Get("/api/v1/media/:id/thumb", mediaHandler.GetThumbnail)
+		app.Get("/api/v1/media/:id/raw", mediaHandler.GetRaw)
+		app.Get("/api/v1/media/:id/raw/*", mediaHandler.GetRaw)
+		app.Get("/api/v1/media/:id/raw*", mediaHandler.GetRaw)
+		app.Get("/media/:id/thumb", mediaHandler.GetThumbnail)
+		app.Get("/media/:id/raw", mediaHandler.GetRaw)
+		app.Get("/media/:id/raw/*", mediaHandler.GetRaw)
+		app.Get("/media/:id/raw*", mediaHandler.GetRaw)
 	}
 
 	// 7. Serve Embedded Desktop Web UI at root (/)

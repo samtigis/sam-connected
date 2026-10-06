@@ -40,9 +40,23 @@ class MediaItem {
       ['.mp4', '.mov', '.m4v', '.avi', '.mkv'].contains(extension.toLowerCase());
 
   String thumbnailUrl(String baseUrl) => '$baseUrl/media/$id/thumb';
-  String rawUrl(String baseUrl) => fileName.isNotEmpty
-      ? '$baseUrl/media/$id/raw/${Uri.encodeComponent(fileName)}'
-      : '$baseUrl/media/$id/raw';
+
+  String rawUrl(String baseUrl) {
+    String ext = extension.isNotEmpty
+        ? extension
+        : (fileName.contains('.') ? '.${fileName.split('.').last}' : '');
+    if (ext.isNotEmpty && !ext.startsWith('.')) {
+      ext = '.$ext';
+    }
+    ext = ext.toLowerCase();
+    if (ext.isEmpty && isVideo) {
+      ext = '.mov';
+    }
+    if (ext.isNotEmpty) {
+      return '$baseUrl/media/$id/raw/video$ext';
+    }
+    return '$baseUrl/media/$id/raw';
+  }
 
   String get formattedFileSize {
     if (fileSize < 1024) return '$fileSize B';

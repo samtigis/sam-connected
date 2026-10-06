@@ -357,6 +357,7 @@ func (h *MediaHandler) GetThumbnail(c *fiber.Ctx) error {
 }
 
 // GetRaw streams the original media file, supporting HTTP 206 Partial Content (Byte-Range) for videos.
+// GetRaw streams the original media file, supporting HTTP 206 Partial Content (Byte-Range) for videos.
 // GET /api/v1/media/:id/raw
 func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 	idParam := c.Params("id")
@@ -375,34 +376,62 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 	}
 
 	rawFilePath := media.FilePath
-	if _, err := os.Stat(rawFilePath); os.IsNotExist(err) {
-		candidates := []string{
-			filepath.Join(h.Storage.BaseDir, media.FilePath),
-			filepath.Join(h.Storage.BaseDir, media.DeviceID, media.Hash+media.Extension),
-			filepath.Join(h.Storage.BaseDir, media.DeviceID, media.FileName),
-		}
+	stat, statErr := os.Stat(rawFilePath)
+	if statErr != nil || stat.IsDir() {
 		found := false
-		for _, cand := range candidates {
-			if _, statErr := os.Stat(cand); statErr == nil {
-				rawFilePath = cand
+		lowerHash := strings.ToLower(media.Hash)
+
+		// Candidate 1: Try relative to Storage.BaseDir
+		if media.FilePath != "" {
+			candRel := filepath.Join(h.Storage.BaseDir, media.FilePath)
+			if s, e := os.Stat(candRel); e == nil && !s.IsDir() {
+				rawFilePath = candRel
 				found = true
-				break
 			}
 		}
+
+		// Candidate 2: Try partitioned directory based on TakenAt / CreatedAt
 		if !found {
-			matches, _ := filepath.Glob(filepath.Join(h.Storage.BaseDir, "*", "*", "*", media.Hash+media.Extension))
-			if len(matches) > 0 {
-				rawFilePath = matches[0]
+			t := media.CreatedAt
+			if media.TakenAt != nil && !media.TakenAt.IsZero() {
+				t = *media.TakenAt
+			}
+			candDate := filepath.Join(h.Storage.BaseDir, media.DeviceID, t.Format("2006"), t.Format("01"), media.Hash+media.Extension)
+			if s, e := os.Stat(candDate); e == nil && !s.IsDir() {
+				rawFilePath = candDate
 				found = true
-			} else {
-				matches2, _ := filepath.Glob(filepath.Join(h.Storage.BaseDir, "*", "*", "*", media.Hash+"*"))
-				if len(matches2) > 0 {
-					rawFilePath = matches2[0]
-					found = true
+			}
+		}
+
+		// Candidate 3: Try device root directory
+		if !found {
+			candDev := filepath.Join(h.Storage.BaseDir, media.DeviceID, media.Hash+media.Extension)
+			if s, e := os.Stat(candDev); e == nil && !s.IsDir() {
+				rawFilePath = candDev
+				found = true
+			}
+		}
+
+		// Candidate 4: Recursive WalkDir search across BaseDir matching media.Hash
+		if !found && h.Storage.BaseDir != "" {
+			_ = filepath.WalkDir(h.Storage.BaseDir, func(p string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() {
+					if strings.Contains(p, "thumbnails") {
+						return nil
+					}
+					if strings.Contains(strings.ToLower(d.Name()), lowerHash) {
+						rawFilePath = p
+						found = true
+						return filepath.SkipAll
+					}
 				}
-			}
+				return nil
+			})
 		}
+
 		if !found {
+			log.Printf("[RAW 404] Media ID %d (Hash: %s, Device: %s, File: %s) not found on disk. FilePath: %s, BaseDir: %s",
+				media.ID, media.Hash, media.DeviceID, media.FileName, media.FilePath, h.Storage.BaseDir)
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 				"error": "raw file not found on disk",
 			})
@@ -413,6 +442,9 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 	ext := strings.ToLower(filepath.Ext(media.FileName))
 	if ext == "" {
 		ext = strings.ToLower(media.Extension)
+	}
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(rawFilePath))
 	}
 	if !strings.HasPrefix(ext, ".") && ext != "" {
 		ext = "." + ext
@@ -448,7 +480,7 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 
 	c.Set("Content-Type", contentType)
 	c.Set("Accept-Ranges", "bytes")
-	c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, media.FileName))
+	c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filepath.Base(media.FileName)))
 
 	// Fiber's SendFile automatically honors Range headers and sends 206 Partial Content for videos
 	err = c.SendFile(rawFilePath)
