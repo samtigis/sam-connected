@@ -51,7 +51,7 @@ func InitDB(dbPath string) (*gorm.DB, error) {
 	}
 
 	// Auto-migrate tables
-	if err := db.AutoMigrate(&Media{}); err != nil {
+	if err := db.AutoMigrate(&Media{}, &Device{}); err != nil {
 		return nil, fmt.Errorf("failed to auto-migrate database schema: %w", err)
 	}
 

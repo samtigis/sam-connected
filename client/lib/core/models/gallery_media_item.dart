@@ -40,6 +40,19 @@ class GalleryMediaItem {
   bool get isLocal => sourceType == MediaSourceType.localDevice && localEntity != null;
   bool get isServer => sourceType == MediaSourceType.serverHost && serverItem != null;
 
+  String get extension {
+    if (serverItem != null && serverItem!.extension.isNotEmpty) {
+      return serverItem!.extension;
+    }
+    final dot = title.lastIndexOf('.');
+    return dot != -1 ? title.substring(dot).toLowerCase() : '';
+  }
+
+  bool get isHeic {
+    final ext = extension.toLowerCase();
+    return ext == '.heic' || ext == '.heif' || ext.contains('heic') || ext.contains('heif');
+  }
+
   factory GalleryMediaItem.fromAssetEntity(
     AssetEntity entity, {
     required bool isSynced,

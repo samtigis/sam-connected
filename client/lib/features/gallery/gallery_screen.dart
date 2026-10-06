@@ -549,44 +549,62 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Widget _buildDeviceChip(ThemeData theme, GalleryController ctrl, Map<String, dynamic> dev) {
     final devId = dev['device_id']?.toString() ?? '';
+    final customName = dev['custom_name']?.toString() ?? '';
+    final displayName = dev['display_name']?.toString() ?? '';
     final count = (dev['total_media'] as num?)?.toInt() ?? 0;
     final isSelected = ctrl.selectedDeviceId == devId;
 
     IconData icon = Icons.smartphone_rounded;
-    String name = devId;
-    final lower = devId.toLowerCase();
-    if (lower.contains('ipad')) {
-      icon = Icons.tablet_mac_rounded;
-      name = 'iPad';
-    } else if (lower.contains('iphone')) {
-      icon = Icons.phone_iphone_rounded;
-      name = 'iPhone';
-    } else if (lower.contains('android')) {
-      icon = Icons.android_rounded;
-      name = 'Android';
-    } else if (lower.contains('windows') || lower.contains('pc')) {
-      icon = Icons.laptop_windows_rounded;
-      name = 'Windows PC';
-    } else if (lower.contains('mac')) {
-      icon = Icons.laptop_mac_rounded;
-      name = 'MacBook';
-    } else if (lower == 'localhost' || lower == 'default' || lower.isEmpty) {
-      icon = Icons.devices_other_rounded;
-      name = 'Perangkat Utama';
-    }
+    String name = displayName.isNotEmpty
+        ? displayName
+        : (customName.isNotEmpty ? customName : devId);
 
-    // Format clean label e.g. "iPad (601E)" or "iPhone (801E)"
-    if (devId.contains('_')) {
-      final parts = devId.split('_');
-      if (parts.length >= 2 && parts.last.isNotEmpty) {
-        final suffix = parts.last;
-        if (lower.contains('ipad')) {
-          name = 'iPad ($suffix)';
-        } else if (lower.contains('iphone')) {
-          name = 'iPhone ($suffix)';
-        } else if (!lower.contains('localhost')) {
-          name = devId.replaceAll('_', ' ');
+    // If no custom name was given by server, format the devId nicely
+    if (customName.isEmpty && displayName.isEmpty) {
+      final lower = devId.toLowerCase();
+      if (lower.contains('ipad')) {
+        icon = Icons.tablet_mac_rounded;
+        name = 'iPad';
+      } else if (lower.contains('iphone')) {
+        icon = Icons.phone_iphone_rounded;
+        name = 'iPhone';
+      } else if (lower.contains('android')) {
+        icon = Icons.android_rounded;
+        name = 'Android';
+      } else if (lower.contains('windows') || lower.contains('pc')) {
+        icon = Icons.laptop_windows_rounded;
+        name = 'Windows PC';
+      } else if (lower.contains('mac')) {
+        icon = Icons.laptop_mac_rounded;
+        name = 'MacBook';
+      } else if (lower == 'localhost' || lower == 'default' || lower.isEmpty) {
+        icon = Icons.devices_other_rounded;
+        name = 'Perangkat Utama';
+      }
+
+      if (devId.contains('_')) {
+        final parts = devId.split('_');
+        if (parts.length >= 2 && parts.last.isNotEmpty) {
+          final suffix = parts.last;
+          if (lower.contains('ipad')) {
+            name = 'iPad ($suffix)';
+          } else if (lower.contains('iphone')) {
+            name = 'iPhone ($suffix)';
+          } else if (!lower.contains('localhost')) {
+            name = devId.replaceAll('_', ' ');
+          }
         }
+      }
+    } else {
+      final lower = name.toLowerCase();
+      if (lower.contains('ipad')) {
+        icon = Icons.tablet_mac_rounded;
+      } else if (lower.contains('iphone')) {
+        icon = Icons.phone_iphone_rounded;
+      } else if (lower.contains('android')) {
+        icon = Icons.android_rounded;
+      } else if (lower.contains('pc') || lower.contains('laptop') || lower.contains('windows')) {
+        icon = Icons.laptop_windows_rounded;
       }
     }
 
@@ -851,32 +869,34 @@ class _GalleryScreenState extends State<GalleryScreen> {
             ),
 
           // Backup Status Indicator (Top Right):
+          // ONLY display on Local Device gallery (Galeri Perangkat)
           // Green checkmark (centang) if synced, Amber/Orange exclamation (tanda seru) if unsynced
-          Positioned(
-            top: 5,
-            right: 5,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: item.isSynced
-                    ? const Color(0xFF16A34A).withOpacity(0.92) // Emerald green
-                    : const Color(0xFFEA580C).withOpacity(0.95), // Amber/Orange warning
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.4),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: Icon(
-                item.isSynced ? Icons.check_rounded : Icons.priority_high_rounded,
-                size: 13,
-                color: Colors.white,
+          if (ctrl.viewMode == GalleryViewMode.device)
+            Positioned(
+              top: 5,
+              right: 5,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: item.isSynced
+                      ? const Color(0xFF16A34A).withOpacity(0.92) // Emerald green
+                      : const Color(0xFFEA580C).withOpacity(0.95), // Amber/Orange warning
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  item.isSynced ? Icons.check_rounded : Icons.priority_high_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

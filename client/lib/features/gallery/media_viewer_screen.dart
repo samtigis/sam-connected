@@ -247,48 +247,72 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
           ],
         ),
         actions: [
-          // Backup status pill
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-            child: currentItem.isSynced
-                ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF16A34A).withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF16A34A)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 14),
-                        SizedBox(width: 4),
-                        Text(
-                          'Tercadangkan',
-                          style: TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  )
-                : _isBackingUpCurrent
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orangeAccent),
-                        ),
-                      )
-                    : ActionChip(
-                        avatar: const Icon(Icons.cloud_upload_rounded, size: 14, color: Colors.white),
-                        label: const Text(
-                          'Cadangkan',
-                          style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                        backgroundColor: const Color(0xFFEA580C),
-                        onPressed: () => _handleBackupCurrent(currentItem),
+          // Backup status pill (only on local device media)
+          if (currentItem.isLocal)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              child: currentItem.isSynced
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16A34A).withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF16A34A)),
                       ),
-          ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Color(0xFF22C55E), size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tercadangkan',
+                            style: TextStyle(color: Color(0xFF22C55E), fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _isBackingUpCurrent
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.orangeAccent),
+                          ),
+                        )
+                      : ActionChip(
+                          avatar: const Icon(Icons.cloud_upload_rounded, size: 14, color: Colors.white),
+                          label: const Text(
+                            'Cadangkan',
+                            style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+                          ),
+                          backgroundColor: const Color(0xFFEA580C),
+                          onPressed: () => _handleBackupCurrent(currentItem),
+                        ),
+            )
+          else if (currentItem.serverItem != null && currentItem.serverItem!.deviceId.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blueAccent.withOpacity(0.6)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.devices_rounded, color: Colors.lightBlueAccent, size: 13),
+                    const SizedBox(width: 4),
+                    Text(
+                      currentItem.serverItem!.deviceId.replaceAll('_', ' '),
+                      style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Info Details sheet
           IconButton(
             tooltip: 'Detail EXIF & Info',
@@ -354,15 +378,32 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                         ),
                       )
                     : Image.network(
-                        item.serverItem != null ? item.serverItem!.rawUrl(baseUrl) : '',
+                        (item.isHeic && item.serverItem != null)
+                            ? item.serverItem!.thumbnailUrl(baseUrl)
+                            : (item.serverItem != null ? item.serverItem!.rawUrl(baseUrl) : ''),
                         fit: BoxFit.contain,
                         loadingBuilder: (ctx, child, progress) {
                           if (progress == null) return child;
                           return const Center(child: CircularProgressIndicator(color: Colors.white54));
                         },
-                        errorBuilder: (ctx, err, stack) => const Center(
-                          child: Icon(Icons.broken_image_rounded, size: 64, color: Colors.white38),
-                        ),
+                        errorBuilder: (ctx, err, stack) {
+                          if (item.serverItem != null) {
+                            return Image.network(
+                              item.serverItem!.thumbnailUrl(baseUrl),
+                              fit: BoxFit.contain,
+                              loadingBuilder: (ctx, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(child: CircularProgressIndicator(color: Colors.white54));
+                              },
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.broken_image_rounded, size: 64, color: Colors.white38),
+                              ),
+                            );
+                          }
+                          return const Center(
+                            child: Icon(Icons.broken_image_rounded, size: 64, color: Colors.white38),
+                          );
+                        },
                       ),
               ),
             ),

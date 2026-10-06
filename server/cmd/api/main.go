@@ -178,8 +178,11 @@ func main() {
 
 		// Device listing & multi-client discovery
 		api.Get("/devices", mediaHandler.GetDevices)
+		api.Post("/devices/:id/name", mediaHandler.SetDeviceName)
+		api.Put("/devices/:id/name", mediaHandler.SetDeviceName)
 		app.Get("/devices", mediaHandler.GetDevices)
 		app.Get("/api/devices", mediaHandler.GetDevices)
+		app.Post("/api/v1/devices/:id/name", mediaHandler.SetDeviceName)
 	}
 
 	// 7. Serve Embedded Desktop Web UI at root (/)

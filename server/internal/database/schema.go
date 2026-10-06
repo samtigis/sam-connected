@@ -29,3 +29,19 @@ type Media struct {
 func (Media) TableName() string {
 	return "medias"
 }
+
+// Device represents a registered client device with an optional custom friendly name.
+type Device struct {
+	ID         uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	DeviceID   string    `gorm:"size:128;uniqueIndex;not null" json:"device_id"`
+	CustomName string    `gorm:"size:128;default:''" json:"custom_name"`
+	Model      string    `gorm:"size:128;default:''" json:"model"`
+	LastActive time.Time `gorm:"index" json:"last_active"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// TableName specifies table name for GORM.
+func (Device) TableName() string {
+	return "devices"
+}

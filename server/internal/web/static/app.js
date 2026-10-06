@@ -240,6 +240,9 @@ async function fetchDevices() {
           
           const lastActiveStr = dev.last_active ? new Date(dev.last_active).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : '-';
 
+          const displayName = dev.display_name || dev.custom_name || dev.device_id;
+          const hasCustomName = Boolean(dev.custom_name);
+
           item.innerHTML = `
             <div style="display: flex; align-items: center; gap: 10px;">
               <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; display: flex; align-items: center; justify-content: center;">
@@ -249,14 +252,42 @@ async function fetchDevices() {
                 </svg>
               </div>
               <div>
-                <div style="font-weight: 600; color: var(--text);">${escapeHtml(dev.device_id)}</div>
-                <div style="font-size: 11px; color: var(--text-muted);">${dev.total_media} media (${formatBytes(dev.total_bytes)}) • Aktif: ${lastActiveStr}</div>
+                <div style="font-weight: 600; color: var(--text);">${escapeHtml(displayName)}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${hasCustomName ? `ID: ${escapeHtml(dev.device_id)} • ` : ''}${dev.total_media} media (${formatBytes(dev.total_bytes)}) • Aktif: ${lastActiveStr}</div>
               </div>
             </div>
-            <button class="btn btn-sm btn-outline btn-view-device-gallery" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 10px; font-size: 12px;">
-              Lihat Galeri
-            </button>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button class="btn btn-sm btn-outline btn-rename-device" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 8px; font-size: 12px;" title="Beri nama custom perangkat ini">
+                ✏️ Beri Nama
+              </button>
+              <button class="btn btn-sm btn-outline btn-view-device-gallery" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 10px; font-size: 12px;">
+                Lihat Galeri
+              </button>
+            </div>
           `;
+
+          const renameBtn = item.querySelector('.btn-rename-device');
+          renameBtn.addEventListener('click', async () => {
+            const currentName = dev.custom_name || dev.display_name || '';
+            const newName = prompt(`Beri nama untuk perangkat "${dev.device_id}":\n(Nama ini otomatis muncul di seluruh HP/iPad klien)`, currentName);
+            if (newName !== null) {
+              try {
+                const res = await fetch(`/api/v1/devices/${encodeURIComponent(dev.device_id)}/name`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: newName.trim() }),
+                });
+                if (res.ok) {
+                  showToast(`Nama perangkat "${dev.device_id}" berhasil disimpan!`);
+                  await fetchDevices();
+                } else {
+                  showToast('Gagal mengubah nama perangkat.');
+                }
+              } catch (e) {
+                showToast('Error: ' + e.message);
+              }
+            }
+          });
 
           const viewBtn = item.querySelector('.btn-view-device-gallery');
           viewBtn.addEventListener('click', () => {
@@ -279,7 +310,8 @@ async function fetchDevices() {
       state.devices.forEach(dev => {
         const opt = document.createElement('option');
         opt.value = dev.device_id;
-        opt.textContent = `${dev.device_id} (${dev.total_media} media)`;
+        const label = dev.display_name || dev.custom_name || dev.device_id;
+        opt.textContent = `${label} (${dev.total_media} media)`;
         if (dev.device_id === currentVal) {
           opt.selected = true;
         }

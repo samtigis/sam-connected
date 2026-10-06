@@ -374,10 +374,39 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 		})
 	}
 
-	if _, err := os.Stat(media.FilePath); os.IsNotExist(err) {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "raw file not found on disk",
-		})
+	rawFilePath := media.FilePath
+	if _, err := os.Stat(rawFilePath); os.IsNotExist(err) {
+		candidates := []string{
+			filepath.Join(h.Storage.BaseDir, media.FilePath),
+			filepath.Join(h.Storage.BaseDir, media.DeviceID, media.Hash+media.Extension),
+			filepath.Join(h.Storage.BaseDir, media.DeviceID, media.FileName),
+		}
+		found := false
+		for _, cand := range candidates {
+			if _, statErr := os.Stat(cand); statErr == nil {
+				rawFilePath = cand
+				found = true
+				break
+			}
+		}
+		if !found {
+			matches, _ := filepath.Glob(filepath.Join(h.Storage.BaseDir, "*", "*", "*", media.Hash+media.Extension))
+			if len(matches) > 0 {
+				rawFilePath = matches[0]
+				found = true
+			} else {
+				matches2, _ := filepath.Glob(filepath.Join(h.Storage.BaseDir, "*", "*", "*", media.Hash+"*"))
+				if len(matches2) > 0 {
+					rawFilePath = matches2[0]
+					found = true
+				}
+			}
+		}
+		if !found {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "raw file not found on disk",
+			})
+		}
 	}
 
 	// Determine accurate content type based on extension
@@ -422,19 +451,21 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 	c.Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, media.FileName))
 
 	// Fiber's SendFile automatically honors Range headers and sends 206 Partial Content for videos
-	err = c.SendFile(media.FilePath)
+	err = c.SendFile(rawFilePath)
 	c.Response().Header.SetContentType(contentType)
 	return err
 }
 
-// GetDevices returns all distinct client devices that have backed up media to the server.
+// GetDevices returns all distinct client devices that have backed up media to the server, including custom friendly names.
 // GET /api/v1/devices
 func (h *MediaHandler) GetDevices(c *fiber.Ctx) error {
 	type Result struct {
-		DeviceID   string     `json:"device_id"`
-		TotalMedia int        `json:"total_media"`
-		TotalBytes int64      `json:"total_bytes"`
-		LastActive *time.Time `json:"last_active"`
+		DeviceID    string     `json:"device_id"`
+		CustomName  string     `json:"custom_name"`
+		DisplayName string     `json:"display_name"`
+		TotalMedia  int        `json:"total_media"`
+		TotalBytes  int64      `json:"total_bytes"`
+		LastActive  *time.Time `json:"last_active"`
 	}
 	var results []Result
 	err := h.DB.Model(&database.Media{}).
@@ -449,9 +480,78 @@ func (h *MediaHandler) GetDevices(c *fiber.Ctx) error {
 		})
 	}
 
+	// Lookup custom names in devices table
+	var devRecords []database.Device
+	_ = h.DB.Find(&devRecords).Error
+	nameMap := make(map[string]string)
+	for _, d := range devRecords {
+		nameMap[d.DeviceID] = d.CustomName
+	}
+
+	for i := range results {
+		cName := nameMap[results[i].DeviceID]
+		results[i].CustomName = cName
+		if cName != "" {
+			results[i].DisplayName = cName
+		} else {
+			results[i].DisplayName = results[i].DeviceID
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"devices": results,
 		"count":   len(results),
+	})
+}
+
+// SetDeviceName updates the custom friendly display name for a client device.
+// POST /api/v1/devices/:id/name
+func (h *MediaHandler) SetDeviceName(c *fiber.Ctx) error {
+	deviceID := strings.TrimSpace(c.Params("id"))
+	if deviceID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "device_id is required"})
+	}
+
+	type RequestBody struct {
+		Name string `json:"name"`
+	}
+	var body RequestBody
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	}
+
+	customName := strings.TrimSpace(body.Name)
+
+	var dev database.Device
+	if err := h.DB.Where("device_id = ?", deviceID).First(&dev).Error; err != nil {
+		dev = database.Device{
+			DeviceID:   deviceID,
+			CustomName: customName,
+			LastActive: time.Now(),
+		}
+		if err := h.DB.Create(&dev).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save device name"})
+		}
+	} else {
+		dev.CustomName = customName
+		dev.UpdatedAt = time.Now()
+		if err := h.DB.Save(&dev).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update device name"})
+		}
+	}
+
+	log.Printf("[DEVICE] Device '%s' renamed to '%s'", deviceID, customName)
+
+	return c.JSON(fiber.Map{
+		"message":     "Device name updated successfully",
+		"device_id":   deviceID,
+		"custom_name": customName,
+		"display_name": func() string {
+			if customName != "" {
+				return customName
+			}
+			return deviceID
+		}(),
 	})
 }
 
