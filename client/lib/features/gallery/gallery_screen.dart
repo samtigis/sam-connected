@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import '../../core/models/gallery_media_item.dart';
@@ -23,6 +24,17 @@ class _GalleryScreenState extends State<GalleryScreen> {
   bool _isSearching = false;
   final TextEditingController _searchCtrl = TextEditingController();
 
+  // Selection mode states
+  bool _isSelectionMode = false;
+  final Set<String> _selectedIds = {};
+
+  // Batch backup state
+  bool _isBatchBackingUp = false;
+  int _batchCurrent = 0;
+  int _batchTotal = 0;
+  String _batchCurrentTitle = '';
+  bool _cancelBatchRequested = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +53,192 @@ class _GalleryScreenState extends State<GalleryScreen> {
     if (mounted) setState(() {});
   }
 
+  void _enterSelectionMode({String? initialSelectedId}) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isSelectionMode = true;
+      if (initialSelectedId != null) {
+        _selectedIds.add(initialSelectedId);
+      }
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _isSelectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleItemSelection(String id) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _selectAll(List<GalleryMediaItem> items) {
+    HapticFeedback.lightImpact();
+    setState(() {
+      for (final item in items) {
+        _selectedIds.add(item.id);
+      }
+    });
+  }
+
+  void _deselectAll() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleGroupSelection(TimelineDateGroup group) {
+    HapticFeedback.lightImpact();
+    final groupIds = group.items.map((i) => i.id).toSet();
+    final allSelected = groupIds.isNotEmpty && groupIds.every((id) => _selectedIds.contains(id));
+    setState(() {
+      if (!_isSelectionMode) _isSelectionMode = true;
+      if (allSelected) {
+        _selectedIds.removeAll(groupIds);
+      } else {
+        _selectedIds.addAll(groupIds);
+      }
+    });
+  }
+
+  Future<void> _startBatchBackup(List<GalleryMediaItem> itemsToBackup) async {
+    if (itemsToBackup.isEmpty || _isBatchBackingUp) return;
+
+    setState(() {
+      _isBatchBackingUp = true;
+      _batchCurrent = 0;
+      _batchTotal = itemsToBackup.length;
+      _batchCurrentTitle = itemsToBackup.first.title;
+      _cancelBatchRequested = false;
+    });
+
+    bool dialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final progress = _batchTotal > 0 ? (_batchCurrent / _batchTotal) : 0.0;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.cloud_upload_rounded, color: Colors.blueAccent),
+                SizedBox(width: 10),
+                Text('Mencadangkan Media', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$_batchCurrent dari $_batchTotal media',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    Text(
+                      '${(progress * 100).toInt()}%',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _batchCurrentTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _cancelBatchRequested = true;
+                  if (dialogOpen) {
+                    dialogOpen = false;
+                    Navigator.of(dlgCtx).pop();
+                  }
+                },
+                child: const Text('Batal'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).then((_) {
+      dialogOpen = false;
+    });
+
+    int successCount = 0;
+    try {
+      successCount = await widget.controller.backupSelectedAssets(
+        itemsToBackup,
+        onProgress: (current, total, title) {
+          if (mounted) {
+            setState(() {
+              _batchCurrent = current;
+              _batchTotal = total;
+              _batchCurrentTitle = title;
+            });
+          }
+        },
+        isCancelled: () => _cancelBatchRequested,
+      );
+    } finally {
+      if (dialogOpen && mounted) {
+        dialogOpen = false;
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (mounted) {
+        setState(() {
+          _isBatchBackingUp = false;
+        });
+
+        // Remove successfully synced IDs from selection
+        final successfulIds = itemsToBackup.map((i) => i.id).toSet();
+        setState(() {
+          _selectedIds.removeAll(successfulIds);
+          if (_selectedIds.isEmpty) {
+            _isSelectionMode = false;
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Selesai! $successCount dari ${itemsToBackup.length} media berhasil dicadangkan ke server.',
+            ),
+            backgroundColor: const Color(0xFF16A34A),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -52,91 +250,136 @@ class _GalleryScreenState extends State<GalleryScreen> {
       visibleItems.addAll(group.items);
     }
 
+    final bool allVisibleSelected = visibleItems.isNotEmpty &&
+        visibleItems.every((item) => _selectedIds.contains(item.id));
+
     return Scaffold(
-      appBar: AppBar(
-        title: _isSearching
-            ? TextField(
-                controller: _searchCtrl,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: 'Cari foto atau video...',
-                  border: InputBorder.none,
-                ),
-                onChanged: ctrl.setSearchQuery,
-              )
-            : Row(
-                children: [
-                  Icon(
-                    ctrl.viewMode == GalleryViewMode.device
-                        ? Icons.phone_iphone_rounded
-                        : Icons.dns_rounded,
-                    size: 22,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    ctrl.viewMode == GalleryViewMode.device ? 'Galeri iPhone' : 'Galeri Server',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
+      appBar: _isSelectionMode
+          ? AppBar(
+              leading: IconButton(
+                tooltip: 'Batal',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: _exitSelectionMode,
               ),
-        actions: [
-          IconButton(
-            tooltip: _isSearching ? 'Tutup Pencarian' : 'Cari Media',
-            icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchCtrl.clear();
-                  ctrl.setSearchQuery('');
-                }
-              });
-            },
-          ),
-          IconButton(
-            tooltip: 'Segarkan',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: ctrl.fetchGallery,
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(96),
-          child: Column(
-            children: [
-              // View Mode Selector (iPhone vs Server)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<GalleryViewMode>(
-                    segments: const [
-                      ButtonSegment(
-                        value: GalleryViewMode.device,
-                        label: Text('Galeri Perangkat'),
-                        icon: Icon(Icons.phone_iphone_rounded, size: 16),
+              title: Text(
+                '${_selectedIds.length} Dipilih',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              actions: [
+                if (visibleItems.isNotEmpty)
+                  TextButton(
+                    onPressed: allVisibleSelected
+                        ? _deselectAll
+                        : () => _selectAll(visibleItems),
+                    child: Text(
+                      allVisibleSelected ? 'Batal Semua' : 'Pilih Semua',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                TextButton(
+                  onPressed: _exitSelectionMode,
+                  child: const Text('Selesai', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: _buildFilterBar(theme, ctrl),
+              ),
+            )
+          : AppBar(
+              title: _isSearching
+                  ? TextField(
+                      controller: _searchCtrl,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Cari foto atau video...',
+                        border: InputBorder.none,
                       ),
-                      ButtonSegment(
-                        value: GalleryViewMode.server,
-                        label: Text('Galeri Server'),
-                        icon: Icon(Icons.cloud_done_rounded, size: 16),
-                      ),
-                    ],
-                    selected: {ctrl.viewMode},
-                    onSelectionChanged: (set) {
-                      if (set.isNotEmpty) {
-                        ctrl.setViewMode(set.first);
+                      onChanged: ctrl.setSearchQuery,
+                    )
+                  : Row(
+                      children: [
+                        Icon(
+                          ctrl.viewMode == GalleryViewMode.device
+                              ? Icons.phone_iphone_rounded
+                              : Icons.dns_rounded,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          ctrl.viewMode == GalleryViewMode.device ? 'Galeri iPhone' : 'Galeri Server',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+              actions: [
+                if (!_isSearching && visibleItems.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: () => _enterSelectionMode(),
+                    icon: const Icon(Icons.checklist_rounded, size: 18),
+                    label: const Text('Pilih', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                IconButton(
+                  tooltip: _isSearching ? 'Tutup Pencarian' : 'Cari Media',
+                  icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = !_isSearching;
+                      if (!_isSearching) {
+                        _searchCtrl.clear();
+                        ctrl.setSearchQuery('');
                       }
-                    },
-                  ),
+                    });
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Segarkan',
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: ctrl.fetchGallery,
+                ),
+              ],
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(96),
+                child: Column(
+                  children: [
+                    // View Mode Selector (iPhone vs Server)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<GalleryViewMode>(
+                          segments: const [
+                            ButtonSegment(
+                              value: GalleryViewMode.device,
+                              label: Text('Galeri Perangkat'),
+                              icon: Icon(Icons.phone_iphone_rounded, size: 16),
+                            ),
+                            ButtonSegment(
+                              value: GalleryViewMode.server,
+                              label: Text('Galeri Server'),
+                              icon: Icon(Icons.cloud_done_rounded, size: 16),
+                            ),
+                          ],
+                          selected: {ctrl.viewMode},
+                          onSelectionChanged: (set) {
+                            if (set.isNotEmpty) {
+                              _exitSelectionMode();
+                              ctrl.setViewMode(set.first);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Filter Chips Row
+                    _buildFilterBar(theme, ctrl),
+                  ],
                 ),
               ),
-              const SizedBox(height: 6),
-              // Filter Chips Row
-              _buildFilterBar(theme, ctrl),
-            ],
-          ),
-        ),
-      ),
+            ),
+      bottomNavigationBar: _isSelectionMode
+          ? _buildSelectionBottomBar(theme, ctrl, visibleItems)
+          : null,
       body: ctrl.isLoading && ctrl.timelineGroups.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : ctrl.errorMessage != null && ctrl.timelineGroups.isEmpty
@@ -148,7 +391,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       child: CustomScrollView(
                         slivers: [
                           // Status Summary Card for Device Gallery
-                          if (ctrl.viewMode == GalleryViewMode.device)
+                          if (ctrl.viewMode == GalleryViewMode.device && !_isSelectionMode)
                             SliverToBoxAdapter(
                               child: _buildSyncStatusCard(theme, ctrl),
                             ),
@@ -178,7 +421,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
                             ),
                             const SliverToBoxAdapter(child: SizedBox(height: 12)),
                           ],
-                          const SliverToBoxAdapter(child: SizedBox(height: 36)),
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: _isSelectionMode ? 90 : 36),
+                          ),
                         ],
                       ),
                     ),
@@ -312,21 +557,48 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildDateHeader(ThemeData theme, TimelineDateGroup group) {
+    final groupIds = group.items.map((i) => i.id).toSet();
+    final bool allGroupSelected = groupIds.isNotEmpty && groupIds.every((id) => _selectedIds.contains(id));
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            group.title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.2,
-            ),
+          Row(
+            children: [
+              Text(
+                group.title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '(${group.items.length})',
+                style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.outline),
+              ),
+            ],
           ),
-          Text(
-            '${group.items.length} item',
-            style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
+          TextButton(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            ),
+            onPressed: () => _toggleGroupSelection(group),
+            child: Text(
+              _isSelectionMode
+                  ? (allGroupSelected ? 'Batal' : 'Pilih')
+                  : 'Pilih',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: (allGroupSelected && _isSelectionMode)
+                    ? theme.colorScheme.error
+                    : theme.colorScheme.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -335,46 +607,109 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   Widget _buildMediaTile(BuildContext context, GalleryMediaItem item, List<GalleryMediaItem> allItems) {
     final ctrl = widget.controller;
+    final theme = Theme.of(context);
+    final isSelected = _selectedIds.contains(item.id);
 
     return InkWell(
       onTap: () {
-        final initialIdx = allItems.indexWhere((m) => m.id == item.id);
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MediaViewerScreen(
-              items: allItems,
-              initialIndex: initialIdx != -1 ? initialIdx : 0,
-              controller: ctrl,
+        if (_isSelectionMode) {
+          _toggleItemSelection(item.id);
+        } else {
+          final initialIdx = allItems.indexWhere((m) => m.id == item.id);
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MediaViewerScreen(
+                items: allItems,
+                initialIndex: initialIdx != -1 ? initialIdx : 0,
+                controller: ctrl,
+              ),
             ),
-          ),
-        );
+          );
+        }
+      },
+      onLongPress: () {
+        if (!_isSelectionMode) {
+          _enterSelectionMode(initialSelectedId: item.id);
+        } else {
+          _toggleItemSelection(item.id);
+        }
       },
       child: Stack(
         fit: StackFit.expand,
         children: [
           // Thumbnail Image Surface
-          if (item.isLocal && item.localEntity != null)
-            AssetEntityImage(
-              item.localEntity!,
-              isOriginal: false,
-              thumbnailSize: const ThumbnailSize(250, 250),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(isSelected ? 6 : 0),
+            child: item.isLocal && item.localEntity != null
+                ? AssetEntityImage(
+                    item.localEntity!,
+                    isOriginal: false,
+                    thumbnailSize: const ThumbnailSize(250, 250),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+                    ),
+                  )
+                : item.isServer && item.serverItem != null
+                    ? Image.network(
+                        item.serverItem!.thumbnailUrl(ctrl.serverBaseUrl),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+                        ),
+                      )
+                    : Container(color: Colors.grey.shade300),
+          ),
+
+          // Selection Overlay Tint & Border
+          if (_isSelectionMode)
+            Positioned.fill(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? theme.colorScheme.primary.withOpacity(0.28)
+                      : Colors.transparent,
+                  border: isSelected
+                      ? Border.all(color: theme.colorScheme.primary, width: 3)
+                      : null,
+                  borderRadius: BorderRadius.circular(isSelected ? 6 : 0),
+                ),
               ),
-            )
-          else if (item.isServer && item.serverItem != null)
-            Image.network(
-              item.serverItem!.thumbnailUrl(ctrl.serverBaseUrl),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Container(
-                color: Colors.grey.shade200,
-                child: const Icon(Icons.broken_image_rounded, color: Colors.grey),
+            ),
+
+          // Selection Indicator Badge (Top Left)
+          if (_isSelectionMode)
+            Positioned(
+              top: 5,
+              left: 5,
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected ? Colors.white : Colors.black.withOpacity(0.4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.35),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: isSelected
+                    ? Icon(
+                        Icons.check_circle_rounded,
+                        color: theme.colorScheme.primary,
+                        size: 22,
+                      )
+                    : const Icon(
+                        Icons.radio_button_unchecked_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
               ),
-            )
-          else
-            Container(color: Colors.grey.shade300),
+            ),
 
           // Video Duration Indicator (Bottom Left)
           if (item.isVideo)
@@ -432,6 +767,94 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionBottomBar(
+    ThemeData theme,
+    GalleryController ctrl,
+    List<GalleryMediaItem> visibleItems,
+  ) {
+    final selectedItems = visibleItems.where((i) => _selectedIds.contains(i.id)).toList();
+    final unsyncedSelected = selectedItems.where((i) => !i.isSynced).toList();
+    final isDevice = ctrl.viewMode == GalleryViewMode.device;
+
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 10,
+        bottom: MediaQuery.of(context).padding.bottom + 10,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.4)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_selectedIds.length} Media Dipilih',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                if (isDevice)
+                  Text(
+                    unsyncedSelected.isNotEmpty
+                        ? '${unsyncedSelected.length} belum dicadangkan'
+                        : (_selectedIds.isNotEmpty ? 'Semua terpilih sudah dicadangkan' : 'Ketuk media untuk memilih'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: unsyncedSelected.isNotEmpty
+                          ? const Color(0xFFEA580C)
+                          : theme.colorScheme.outline,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (isDevice && unsyncedSelected.isNotEmpty)
+            FilledButton.icon(
+              onPressed: _isBatchBackingUp
+                  ? null
+                  : () => _startBatchBackup(unsyncedSelected),
+              icon: _isBatchBackingUp
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.cloud_upload_rounded, size: 18),
+              label: Text(
+                _isBatchBackingUp
+                    ? '($_batchCurrent/$_batchTotal)'
+                    : 'Cadangkan (${unsyncedSelected.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+            )
+          else if (_selectedIds.isNotEmpty)
+            OutlinedButton(
+              onPressed: _deselectAll,
+              child: const Text('Batal Pilih'),
+            ),
         ],
       ),
     );

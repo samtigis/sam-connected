@@ -286,6 +286,34 @@ class GalleryController extends ChangeNotifier {
     }
   }
 
+  /// Backs up a batch of selected items with progress callbacks
+  Future<int> backupSelectedAssets(
+    List<GalleryMediaItem> items, {
+    void Function(int current, int total, String title)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final toBackup = items.where((i) => !i.isSynced && i.localEntity != null).toList();
+    if (toBackup.isEmpty) return 0;
+
+    int successCount = 0;
+    final total = toBackup.length;
+
+    for (int i = 0; i < total; i++) {
+      if (isCancelled != null && isCancelled()) break;
+
+      final item = toBackup[i];
+      onProgress?.call(i + 1, total, item.title);
+
+      final ok = await backupSingleAsset(item);
+      if (ok) {
+        successCount++;
+      }
+    }
+
+    return successCount;
+  }
+
+
   void _rebuildTimeline() {
     if (_viewMode == GalleryViewMode.device) {
       _rebuildDeviceTimeline();
