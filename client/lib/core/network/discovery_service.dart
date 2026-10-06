@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -67,6 +68,8 @@ class DiscoveredHost {
 
 class DiscoveryService extends ChangeNotifier {
   nsd.Discovery? _nsdDiscovery;
+  RawDatagramSocket? _udpSocket;
+  Timer? _udpPeriodicPingTimer;
   bool _isSearching = false;
   String _statusMessage = 'Mencari server...';
 
@@ -105,16 +108,18 @@ class DiscoveryService extends ChangeNotifier {
         _statusMessage = 'Terhubung ke ${isAlive.name}';
         _isSearching = false;
         notifyListeners();
-        // Continue mDNS in background to detect any other hosts
       }
     }
 
-    // 2. Start mDNS Zeroconf with IPv4 resolution
-    _statusMessage = 'Mencari server via Zeroconf mDNS...';
+    // 2. Start UDP Discovery Beacon Listener & Broadcaster (Port 8088 - fastest on LAN)
+    _statusMessage = 'Memindai sinyal server lokal (UDP & mDNS)...';
     notifyListeners();
+    await _startUdpDiscovery();
+
+    // 3. Start mDNS Zeroconf with IPv4 resolution
     await _startMdnsDiscovery();
 
-    // 3. Fallback: Subnet LAN Scanner if no server active after short delay
+    // 4. Fallback: Subnet LAN Scanner if no server active after short delay
     Future.delayed(const Duration(milliseconds: 1500), () async {
       if (_activeHost == null || !_activeHost!.isOnline || forceRescan) {
         await _scanLocalSubnet();
@@ -122,6 +127,92 @@ class DiscoveryService extends ChangeNotifier {
       _isSearching = false;
       notifyListeners();
     });
+  }
+
+  /// Listens on UDP port 8088 for server presence beacons and broadcasts discovery requests
+  Future<void> _startUdpDiscovery() async {
+    try {
+      _udpSocket?.close();
+      _udpSocket = null;
+      _udpPeriodicPingTimer?.cancel();
+
+      // Try binding to UDP 8088 with address/port reuse
+      try {
+        _udpSocket = await RawDatagramSocket.bind(
+          InternetAddress.anyIPv4,
+          8088,
+          reuseAddress: true,
+          reusePort: true,
+        );
+      } catch (_) {
+        // Fallback to ephemeral port for broadcast sending/receiving
+        _udpSocket = await RawDatagramSocket.bind(
+          InternetAddress.anyIPv4,
+          0,
+        );
+      }
+
+      if (_udpSocket != null) {
+        _udpSocket!.broadcastEnabled = true;
+        _udpSocket!.listen((event) {
+          if (event == RawSocketEvent.read) {
+            final dg = _udpSocket?.receive();
+            if (dg != null) {
+              _handleUdpPacket(dg);
+            }
+          }
+        });
+
+        // Send discovery ping immediately and repeat after 600ms
+        _sendUdpDiscoveryPing();
+        _udpPeriodicPingTimer = Timer.periodic(const Duration(milliseconds: 3000), (_) {
+          if (_activeHost == null || !_activeHost!.isOnline) {
+            _sendUdpDiscoveryPing();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[DiscoveryService] UDP discovery setup warning: $e');
+    }
+  }
+
+  void _sendUdpDiscoveryPing() {
+    if (_udpSocket == null) return;
+    try {
+      final data = utf8.encode('SAM_CONNECTED_DISCOVER');
+      // Broadcast to universal broadcast and common subnet masks
+      _udpSocket?.send(data, InternetAddress('255.255.255.255'), 8088);
+    } catch (_) {}
+  }
+
+  void _handleUdpPacket(Datagram datagram) {
+    try {
+      final text = utf8.decode(datagram.data).trim();
+      if (!text.startsWith('{')) return;
+
+      final map = jsonDecode(text) as Map<String, dynamic>;
+      if (map['service'] == 'sam-connected-backup') {
+        final String? status = map['status'];
+        final String ip = (map['ip'] as String?)?.trim() ?? datagram.address.address;
+        final int port = (map['port'] as num?)?.toInt() ?? 8080;
+        final String name = (map['name'] as String?) ?? 'Sam Connected Server ($ip)';
+
+        if (status == 'offline') {
+          if (_activeHost != null && _activeHost!.host == ip) {
+            _activeHost = _activeHost!.copyWith(isOnline: false);
+            notifyListeners();
+          }
+          return;
+        }
+
+        // Server is online! Immediately probe and register
+        _probeHost(ip, port, name: name, method: 'Sinyal Pancaran UDP (Port 8088)').then((probed) {
+          if (probed != null) {
+            _registerHost(probed);
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _startMdnsDiscovery() async {
@@ -207,6 +298,24 @@ class DiscoveryService extends ChangeNotifier {
         50, 100, 101, 102, 103, 104, 105, 110, 111, 112, 113, 114, 115,
         120, 150, 200, 254
       ];
+
+      // Add neighboring IPs close to device's own Wi-Fi IP for instant hit
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          final parts = addr.address.split('.');
+          if (parts.length == 4) {
+            final mySuffix = int.tryParse(parts[3]);
+            if (mySuffix != null) {
+              for (int d = -5; d <= 5; d++) {
+                final adj = mySuffix + d;
+                if (adj > 1 && adj < 255 && !prioritySuffixes.contains(adj)) {
+                  prioritySuffixes.insert(0, adj);
+                }
+              }
+            }
+          }
+        }
+      }
 
       for (final prefix in subnetPrefixes) {
         if (_activeHost != null && _activeHost!.isOnline) break;
@@ -425,6 +534,10 @@ class DiscoveryService extends ChangeNotifier {
       } catch (_) {}
       _nsdDiscovery = null;
     }
+    _udpPeriodicPingTimer?.cancel();
+    _udpPeriodicPingTimer = null;
+    _udpSocket?.close();
+    _udpSocket = null;
     _isSearching = false;
     notifyListeners();
   }
@@ -432,6 +545,8 @@ class DiscoveryService extends ChangeNotifier {
   @override
   void dispose() {
     _heartbeatTimer?.cancel();
+    _udpPeriodicPingTimer?.cancel();
+    _udpSocket?.close();
     stopDiscovery();
     super.dispose();
   }

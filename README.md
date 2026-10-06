@@ -59,10 +59,14 @@ Tersedia aplikasi desktop siap pakai **`SamConnectedServer.exe`** di root folder
 #### 🚀 Cara Menjalankan (Sangat Mudah):
 Cukup klik ganda (double-click) **`SamConnectedServer.exe`** atau **`start_server.bat`** di folder root proyek.
 - **Antarmuka Desktop Native Lengkap**: Jendela aplikasi GUI langsung terbuka (persis seperti di MacBook).
-- **Dashboard Host Server**: Menampilkan alamat IP lokal Wi-Fi, port `8080`, status mDNS auto-discovery, dan live console logs.
+- **Dual-Channel Auto-Discovery**: Memancarkan sinyal server secara aktif di jaringan Wi-Fi lokal melalui **mDNS Zeroconf** (`_photobackup._tcp`) dan **UDP Discovery Beacon** (Port `8088`) sehingga client iPhone/iPad langsung terhubung otomatis tanpa ketik IP.
+- **Dashboard Host Server**: Menampilkan alamat IP lokal Wi-Fi fisik (otomatis mengabaikan adapter virtual WSL/Hyper-V/Docker), port `8080`, status disk, dan live console logs.
 - **Pemilih Disk / Folder (HDD Picker)**: Anda bisa langsung memilih disk mana saja (`C:`, `D:`, `E:`, `F:`, atau Harddisk Eksternal 2TB/4TB) melalui tombol **"Ganti Folder / Disk"** yang memunculkan dialog Windows Explorer resmi. Lokasi pilihan Anda otomatis tersimpan.
 - **Galeri Server (Google Photos-style)**: Dilengkapi tab Galeri bawaan dengan timeline foto/video, filter (Foto, Video, Favorit), search, dan Lightbox Viewer interaktif (zoom, detail EXIF kamera/resolusi/ukuran/SHA-256, unduh file asli, dan hapus).
 - **Akses Fleksibel**: Selain lewat jendela aplikasi di Windows, antarmuka ini juga bisa diakses langsung via browser dari laptop/tablet di jaringan Wi-Fi lokal melalui `http://[IP-PC]:8080`.
+
+#### 🛡️ Konfigurasi Windows Firewall (1-Klik):
+Jika client belum langsung membaca server di jaringan Wi-Fi, cukup klik kanan dan pilih *Run as Administrator* pada file **`setup_firewall.bat`** untuk membuka port `8080` (TCP) dan `8088` (UDP) secara otomatis.
 
 #### Menjalankan via Command Line (Headless / Mode Server Background):
 Jika ingin menjalankan tanpa tampilan antarmuka (mode CLI daemon):

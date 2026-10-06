@@ -77,12 +77,21 @@ func main() {
 		log.Fatalf("[FATAL] Could not initialize storage service: %v", err)
 	}
 
-	// 3. Initialize mDNS Service (_photobackup._tcp)
+	// 3. Initialize Discovery Services: mDNS (_photobackup._tcp) & UDP Beacon (Port 8088)
 	mdnsSvc := discovery.NewMDNSService(*mdnsNameFlag, *portFlag)
 	if err := mdnsSvc.Start(); err != nil {
 		log.Printf("[WARN] mDNS broadcast could not start (non-fatal): %v", err)
 	}
 	defer mdnsSvc.Stop()
+
+	beaconSvc := discovery.NewBeaconService(*mdnsNameFlag, *portFlag, 8088)
+	if err := beaconSvc.Start(); err != nil {
+		log.Printf("[WARN] UDP discovery beacon could not start (non-fatal): %v", err)
+	}
+	defer beaconSvc.Stop()
+
+	localLANIP := discovery.GetBestLocalIPv4()
+	log.Printf("[DISCOVERY] Server local IP: %s | API: http://%s:%d/api/v1", localLANIP, localLANIP, *portFlag)
 
 	// 4. Initialize Fiber App (4GB BodyLimit for video files)
 	app := fiber.New(fiber.Config{
@@ -202,7 +211,8 @@ func main() {
 		log.Printf("[SHUTDOWN] Received signal: %s. Initiating graceful termination...", sig)
 	}
 
-	// Stop mDNS broadcast first so clients discover server is closing
+	// Stop discovery services first so clients immediately know server is closing
+	beaconSvc.Stop()
 	mdnsSvc.Stop()
 
 	// Shutdown Fiber web engine with 5s deadline

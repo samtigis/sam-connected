@@ -35,10 +35,13 @@ func NewMDNSService(instanceName string, port int) *MDNSService {
 func (m *MDNSService) Start() error {
 	serviceType := "_photobackup._tcp"
 	domain := "local."
+	bestIP := GetBestLocalIPv4()
 	txtRecords := []string{
 		"version=1.0",
 		"path=/api/v1",
 		"app=sam-connected",
+		fmt.Sprintf("ip=%s", bestIP),
+		fmt.Sprintf("port=%d", m.port),
 	}
 
 	server, err := zeroconf.Register(
