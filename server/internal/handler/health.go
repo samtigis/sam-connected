@@ -34,7 +34,7 @@ func (h *HealthHandler) Ping(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status":         "ok",
 		"service":        "sam-connected-backup",
-		"version":        "1.0.0",
+		"version":        "1.2.0",
 		"uptime_seconds": int64(uptime),
 		"server_time":    time.Now().UTC(),
 		"disk":           diskStatus,
