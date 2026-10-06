@@ -43,7 +43,38 @@ Proyek ini menggunakan arsitektur **Hybrid Dual-Engine**:
 
 ## 🚀 Panduan Menjalankan
 
-### A. Menjalankan sebagai Server di MacBook (macOS)
+### A. Menjalankan sebagai Server di Windows PC
+
+Tersedia file executable siap pakai **`server.exe`** di dalam folder `client/assets/bin/`.
+
+#### Opsi 1: Menggunakan Script Cepat (Sangat Mudah)
+Cukup klik ganda (double-click) file **`start_server.bat`** di folder root proyek.
+- Server otomatis aktif di port `8080`.
+- Lokasi penyimpanan default foto ada di `%USERPROFILE%\Pictures\SamConnectedBackup`.
+- Zeroconf mDNS aktif sehingga iPhone / Android langsung mengenali server di jaringan Wi-Fi lokal.
+
+#### Opsi 2: Menjalankan Langsung via Command Prompt / PowerShell
+```powershell
+# Menggunakan binary siap pakai
+.\client\assets\bin\server.exe -port 8080 -storage "D:\FotoBackup"
+
+# Atau jika ingin menjalankan langsung dari kode sumber Go
+cd server
+go run ./cmd/api -port 8080 -storage "D:\FotoBackup"
+```
+
+#### Opsi 3: Menggunakan GUI Desktop Flutter (Windows)
+```powershell
+cd client
+flutter run -d windows
+```
+- Pilih **Mode Server / Host Storage**.
+- Tentukan direktori penyimpanan via folder picker.
+- Klik **Nyalakan Server**.
+
+---
+
+### B. Menjalankan sebagai Server di MacBook (macOS)
 
 #### 1. Menggunakan GUI Desktop (Rekomendasi)
 ```bash
@@ -66,17 +97,17 @@ go run ./cmd/api -port 8080 -storage ~/Documents/SamBackup
 
 ---
 
-### B. Menjalankan sebagai Client di iPhone (iOS / Simulator)
+### C. Menjalankan sebagai Client di Smartphone (iOS / Android)
 
 1. Jalankan aplikasi client:
 ```bash
 cd client
 flutter run -d <device_or_simulator_id>
 ```
-*(Atau buka file `client/ios/Runner.xcworkspace` di Xcode dan tekan Run).*
+*(Untuk iOS: buka file `client/ios/Runner.xcworkspace` di Xcode dan tekan Run).*
 
 2. Pada onboarding, pilih **Mode Client / Uploader**.
-3. Aplikasi akan mendeteksi server secara otomatis via mDNS atau Anda dapat memasukkan alamat server (misal: `http://<IP_MACBOOK>:8080/api/v1`).
+3. Aplikasi akan mendeteksi server secara otomatis via mDNS atau Anda dapat memasukkan alamat server (misal: `http://<IP_PC_WINDOWS>:8080/api/v1`).
 4. Berikan izin akses foto dan tekan **Mulai Cadangkan Sekarang**.
 
 ---
@@ -95,20 +126,26 @@ flutter run -d <device_or_simulator_id>
 
 ---
 
-## 🛠️ Kompilasi Binary Server
+## 🛠️ Kompilasi Binary Server (Build dari Source)
 
-Jika Anda memodifikasi kode Go di folder `server/`, kompilasi ulang binary ke folder assets client:
+Binary siap pakai sudah disertakan di `client/assets/bin/` (`server.exe` untuk Windows dan `server_mac` untuk macOS).
+Jika Anda memodifikasi kode Go di folder `server/`, berikut cara mengompilasi ulang:
+
+```powershell
+# Untuk Windows (PowerShell / CMD)
+cd server
+$env:CGO_ENABLED="0"; $env:GOOS="windows"; $env:GOARCH="amd64"
+go build -ldflags="-s -w" -o ../client/assets/bin/server.exe ./cmd/api
+```
 
 ```bash
 # Untuk macOS (ARM64 / Apple Silicon)
 cd server
-go build -o ../client/assets/bin/server_mac ./cmd/api
-
-# Untuk Windows (x64)
-GOOS=windows GOARCH=amd64 go build -o ../client/assets/bin/server.exe ./cmd/api
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../client/assets/bin/server_mac ./cmd/api
 
 # Untuk Linux (x64)
-GOOS=linux GOARCH=amd64 go build -o ../client/assets/bin/server_linux ./cmd/api
+cd server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../client/assets/bin/server_linux ./cmd/api
 ```
 
 ---
