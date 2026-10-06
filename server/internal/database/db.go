@@ -55,6 +55,11 @@ func InitDB(dbPath string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to auto-migrate database schema: %w", err)
 	}
 
+	// Migrate legacy global unique index on hash to per-device composite unique index
+	_ = db.Exec("DROP INDEX IF EXISTS idx_medias_hash;").Error
+	_ = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_device_hash ON medias(device_id, hash);").Error
+	_ = db.Exec("CREATE INDEX IF NOT EXISTS idx_medias_hash ON medias(hash);").Error
+
 	log.Printf("[DB] SQLite database initialized successfully at: %s (WAL enabled)", dbPath)
 	return db, nil
 }

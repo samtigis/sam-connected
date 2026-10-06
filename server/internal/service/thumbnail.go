@@ -5,6 +5,7 @@ import (
 	"image"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -131,3 +132,53 @@ func (s *ThumbnailService) ProcessThumbnailAsync(mediaID uint, srcPath, destPath
 		}
 	}()
 }
+
+// FindFFmpegPath discovers the ffmpeg executable across PATH and known Windows/Unix locations.
+func FindFFmpegPath() string {
+	if p, err := exec.LookPath("ffmpeg"); err == nil {
+		return p
+	}
+	candidates := []string{
+		`F:\ffmpeg\bin\ffmpeg.exe`,
+		`C:\ffmpeg\bin\ffmpeg.exe`,
+		`D:\ffmpeg\bin\ffmpeg.exe`,
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "WinGet", "Links", "ffmpeg.exe"),
+		filepath.Join(os.Getenv("ProgramFiles"), "ffmpeg", "bin", "ffmpeg.exe"),
+		"/usr/local/bin/ffmpeg",
+		"/opt/homebrew/bin/ffmpeg",
+		"/usr/bin/ffmpeg",
+	}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
+// GenerateVideoThumbnail extracts a frame from a video file using ffmpeg with safe dimensions and update flags.
+func (s *ThumbnailService) GenerateVideoThumbnail(srcPath, destPath string) error {
+	ffmpegPath := FindFFmpegPath()
+	if ffmpegPath == "" {
+		return fmt.Errorf("ffmpeg executable not found in PATH or standard install directories")
+	}
+
+	cleanDest := filepath.Clean(destPath)
+	if err := os.MkdirAll(filepath.Dir(cleanDest), 0755); err != nil {
+		return fmt.Errorf("failed to create thumbnail directory: %w", err)
+	}
+
+	// -ss 00:00:00.100 grabs an early frame safely (works even on short video clips)
+	// -vf "scale=400:-2" ensures width 400 and an even height (avoids odd dimensions like 711)
+	// -update 1 ensures modern image2 muxer writes single image without %d pattern error
+	cmd := exec.Command(ffmpegPath, "-y", "-ss", "00:00:00.100", "-i", srcPath, "-frames:v", "1", "-vf", "scale=400:-2", "-update", "1", "-q:v", "2", cleanDest)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ffmpeg failed: %w (output: %s)", err, string(out))
+	}
+	return nil
+}
+

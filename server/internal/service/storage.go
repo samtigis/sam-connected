@@ -9,7 +9,6 @@ import (
 	"log"
 	"mime"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -109,9 +108,9 @@ func (s *StorageService) SaveUploadedFile(
 		log.Printf("[WARN] Client hash mismatch (client: %s, server: %s), using server hash", clientHash, computedHash)
 	}
 
-	// Check if this hash already exists in DB
+	// Check if this hash already exists in DB for this device
 	var existing database.Media
-	if err := s.DB.Where("hash = ?", computedHash).First(&existing).Error; err == nil {
+	if err := s.DB.Where("device_id = ? AND hash = ?", cleanDeviceID, computedHash).First(&existing).Error; err == nil {
 		// Already exists - verify physical file exists
 		if _, statErr := os.Stat(existing.FilePath); statErr == nil {
 			return &existing, nil
@@ -218,20 +217,85 @@ func (s *StorageService) SaveUploadedFile(
 	} else if IsVideoExtension(ext) {
 		// Attempt video thumbnail generation via ffmpeg if available
 		go func() {
-			if ffmpegPath, err := exec.LookPath("ffmpeg"); err == nil {
-				_ = os.MkdirAll(thumbFullDir, 0755)
-				cmd := exec.Command(ffmpegPath, "-y", "-ss", "00:00:00.500", "-i", targetFullPath, "-frames:v", "1", "-vf", "scale=400:-1", "-q:v", "2", thumbFullPath)
-				if cmd.Run() == nil {
-					s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
-						"has_thumbnail":  true,
-						"thumbnail_path": thumbFullPath,
-					})
-				}
+			if err := s.ThumbService.GenerateVideoThumbnail(targetFullPath, thumbFullPath); err == nil {
+				s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
+					"has_thumbnail":  true,
+					"thumbnail_path": thumbFullPath,
+				})
+			} else {
+				log.Printf("[STORAGE] Video thumbnail generation failed for %s: %v", targetFullPath, err)
 			}
 		}()
 	}
 
 	return media, nil
+}
+
+// BackfillMissingThumbnails scans for media missing thumbnails and generates them in the background.
+func (s *StorageService) BackfillMissingThumbnails() {
+	go func() {
+		var missing []database.Media
+		if err := s.DB.Where("has_thumbnail = ? OR thumbnail_path = ''", false).Find(&missing).Error; err != nil {
+			log.Printf("[THUMBNAIL] Error querying media with missing thumbnails: %v", err)
+			return
+		}
+
+		if len(missing) == 0 {
+			return
+		}
+
+		log.Printf("[THUMBNAIL] Found %d media items with missing thumbnails, starting backfill...", len(missing))
+		successCount := 0
+
+		for _, m := range missing {
+			if m.FilePath == "" {
+				continue
+			}
+			if _, err := os.Stat(m.FilePath); os.IsNotExist(err) {
+				continue
+			}
+
+			thumbDir := filepath.Join(s.BaseDir, m.DeviceID, "thumbnails")
+			thumbPath := filepath.Join(thumbDir, m.Hash+".jpg")
+
+			// Check if physical thumbnail file already exists on disk
+			if _, statErr := os.Stat(thumbPath); statErr == nil {
+				s.DB.Model(&database.Media{}).Where("id = ?", m.ID).Updates(map[string]interface{}{
+					"has_thumbnail":  true,
+					"thumbnail_path": thumbPath,
+				})
+				successCount++
+				continue
+			}
+
+			if IsImageExtension(m.Extension) {
+				meta, err := s.ThumbService.GenerateThumbnail(m.FilePath, thumbPath)
+				if err == nil {
+					updates := map[string]interface{}{
+						"has_thumbnail":  true,
+						"thumbnail_path": thumbPath,
+						"width":          meta.Width,
+						"height":         meta.Height,
+					}
+					if meta.TakenAt != nil && m.TakenAt == nil {
+						updates["taken_at"] = meta.TakenAt
+					}
+					s.DB.Model(&database.Media{}).Where("id = ?", m.ID).Updates(updates)
+					successCount++
+				}
+			} else if IsVideoExtension(m.Extension) {
+				if err := s.ThumbService.GenerateVideoThumbnail(m.FilePath, thumbPath); err == nil {
+					s.DB.Model(&database.Media{}).Where("id = ?", m.ID).Updates(map[string]interface{}{
+						"has_thumbnail":  true,
+						"thumbnail_path": thumbPath,
+					})
+					successCount++
+				}
+			}
+		}
+
+		log.Printf("[THUMBNAIL] Completed backfill: %d/%d thumbnails generated/updated.", successCount, len(missing))
+	}()
 }
 
 func copyFile(src, dst string) error {

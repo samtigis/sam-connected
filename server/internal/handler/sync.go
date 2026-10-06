@@ -83,9 +83,11 @@ func (h *SyncHandler) Preflight(c *fiber.Ctx) error {
 		chunk := cleanList[i:end]
 
 		var foundHashes []string
-		if err := h.DB.Model(&database.Media{}).
-			Where("hash IN (?)", chunk).
-			Pluck("hash", &foundHashes).Error; err != nil {
+		query := h.DB.Model(&database.Media{}).Where("hash IN (?)", chunk)
+		if req.DeviceID != "" {
+			query = query.Where("device_id = ?", req.DeviceID)
+		}
+		if err := query.Pluck("hash", &foundHashes).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "database query failed",
 			})

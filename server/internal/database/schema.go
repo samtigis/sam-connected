@@ -7,8 +7,8 @@ import (
 // Media represents a backed-up photo or video file in the system.
 type Media struct {
 	ID            uint       `gorm:"primaryKey;autoIncrement" json:"id"`
-	DeviceID      string     `gorm:"size:128;index;not null" json:"device_id"`
-	Hash          string     `gorm:"size:64;uniqueIndex;not null" json:"hash"` // SHA-256 checksum (hex)
+	DeviceID      string     `gorm:"size:128;not null;uniqueIndex:idx_device_hash;index:idx_medias_device_id" json:"device_id"`
+	Hash          string     `gorm:"size:64;not null;uniqueIndex:idx_device_hash;index:idx_medias_hash" json:"hash"` // SHA-256 checksum (hex)
 	FileName      string     `gorm:"size:255;not null" json:"file_name"`
 	FilePath      string     `gorm:"size:512;not null" json:"file_path"`
 	ThumbnailPath string     `gorm:"size:512" json:"thumbnail_path,omitempty"`

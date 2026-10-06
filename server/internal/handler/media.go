@@ -2,8 +2,8 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -291,8 +291,8 @@ func (h *MediaHandler) GetThumbnail(c *fiber.Ctx) error {
 
 	// Check if thumbnail exists
 	if !media.HasThumbnail || media.ThumbnailPath == "" {
-		thumbDir := fmt.Sprintf("%s/%s/thumbnails", h.Storage.BaseDir, media.DeviceID)
-		thumbPath := fmt.Sprintf("%s/%s.jpg", thumbDir, media.Hash)
+		thumbDir := filepath.Join(h.Storage.BaseDir, media.DeviceID, "thumbnails")
+		thumbPath := filepath.Join(thumbDir, media.Hash+".jpg")
 
 		// If media is image, attempt on-demand generation
 		if service.IsImageExtension(media.Extension) && media.FilePath != "" {
@@ -314,25 +314,19 @@ func (h *MediaHandler) GetThumbnail(c *fiber.Ctx) error {
 				})
 			}
 		} else if service.IsVideoExtension(media.Extension) && media.FilePath != "" {
-			// If media is video, try extracting a frame via ffmpeg if available
-			if ffmpegPath, err := exec.LookPath("ffmpeg"); err == nil {
-				_ = os.MkdirAll(thumbDir, 0755)
-				cmd := exec.Command(ffmpegPath, "-y", "-ss", "00:00:00.500", "-i", media.FilePath, "-frames:v", "1", "-vf", "scale=400:-1", "-q:v", "2", thumbPath)
-				if cmd.Run() == nil {
-					media.HasThumbnail = true
-					media.ThumbnailPath = thumbPath
-					h.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
-						"has_thumbnail":  true,
-						"thumbnail_path": thumbPath,
-					})
-				} else {
-					return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-						"error": "video thumbnail generation failed",
-					})
-				}
+			// If media is video, extract a frame via ThumbService
+			cleanThumbPath := filepath.Clean(thumbPath)
+			if err := h.ThumbService.GenerateVideoThumbnail(media.FilePath, cleanThumbPath); err == nil {
+				media.HasThumbnail = true
+				media.ThumbnailPath = cleanThumbPath
+				h.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
+					"has_thumbnail":  true,
+					"thumbnail_path": cleanThumbPath,
+				})
 			} else {
+				log.Printf("[THUMBNAIL] Video thumbnail generation failed for media ID %d: %v", media.ID, err)
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-					"error": "ffmpeg not found for video thumbnail generation",
+					"error": "video thumbnail generation failed",
 				})
 			}
 		} else {

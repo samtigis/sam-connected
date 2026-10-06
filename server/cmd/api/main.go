@@ -90,6 +90,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("[FATAL] Could not initialize storage service: %v", err)
 	}
+	storageSvc.BackfillMissingThumbnails()
 
 	// 3. Initialize Discovery Services: mDNS (_photobackup._tcp) & UDP Beacon (Port 8088)
 	mdnsSvc := discovery.NewMDNSService(*mdnsNameFlag, *portFlag)

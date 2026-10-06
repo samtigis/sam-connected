@@ -335,11 +335,15 @@ async function loadGallery() {
       const thumbUrl = `/api/v1/media/${item.id}/thumb`;
 
       card.innerHTML = `
-        <img class="media-thumb" src="${thumbUrl}" loading="lazy" alt="${item.file_name}" onerror="this.src='/favicon.ico';">
+        <img class="media-thumb" src="${thumbUrl}" loading="lazy" alt="${escapeHtml(item.file_name)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="media-fallback ${isVideo ? 'video-fallback' : 'image-fallback'}" style="display: none;">
+          <div class="fallback-icon">${isVideo ? '🎬' : '🖼️'}</div>
+          <div class="fallback-name">${escapeHtml(item.file_name)}</div>
+        </div>
         ${isVideo ? `<div class="media-badge video">▶ Video</div>` : ''}
         ${item.is_favorite ? `<div class="media-badge fav">⭐</div>` : ''}
         <div class="media-overlay">
-          <div>${item.file_name}</div>
+          <div>${escapeHtml(item.file_name)}</div>
           <div>${formatBytes(item.file_size)}</div>
         </div>
       `;

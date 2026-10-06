@@ -13,3 +13,4 @@ client/build/
 .dart_tool/
 *.old
 *.running
+*_old.exe
