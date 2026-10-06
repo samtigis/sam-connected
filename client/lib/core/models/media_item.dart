@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 class MediaItem {
   final int id;
   final String deviceId;
@@ -53,19 +51,47 @@ class MediaItem {
     return '${(fileSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
+  static const List<String> _mediaIndonesianMonths = [
+    '',
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ];
+
+  static String _formatMediaIndonesianDate(DateTime d, {bool includeTime = false}) {
+    final monthName = (d.month >= 1 && d.month <= 12) ? _mediaIndonesianMonths[d.month] : '${d.month}';
+    final dateStr = '${d.day} $monthName ${d.year}';
+    if (includeTime) {
+      final hourStr = d.hour.toString().padLeft(2, '0');
+      final minStr = d.minute.toString().padLeft(2, '0');
+      return '$dateStr, $hourStr:$minStr';
+    }
+    return dateStr;
+  }
+
   DateTime get displayDate => takenAt ?? createdAt;
 
   String get formattedDate {
     final now = DateTime.now();
     final d = displayDate;
+    final timeStr = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (d.year == now.year && d.month == now.month && d.day == now.day) {
-      return 'Hari ini, ${DateFormat('HH:mm').format(d)}';
+      return 'Hari ini, $timeStr';
     }
     final yesterday = now.subtract(const Duration(days: 1));
     if (d.year == yesterday.year && d.month == yesterday.month && d.day == yesterday.day) {
-      return 'Kemarin, ${DateFormat('HH:mm').format(d)}';
+      return 'Kemarin, $timeStr';
     }
-    return DateFormat('d MMMM yyyy, HH:mm', 'id_ID').format(d);
+    return _formatMediaIndonesianDate(d, includeTime: true);
   }
 
   String get dateGroupKey {
@@ -78,7 +104,7 @@ class MediaItem {
     if (d.year == yesterday.year && d.month == yesterday.month && d.day == yesterday.day) {
       return 'Kemarin';
     }
-    return DateFormat('d MMMM yyyy', 'id_ID').format(d);
+    return _formatMediaIndonesianDate(d, includeTime: false);
   }
 
   factory MediaItem.fromJson(Map<String, dynamic> json) {

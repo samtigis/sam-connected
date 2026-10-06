@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'core/role/role_controller.dart';
 import 'features/home/client_home_screen.dart';
 import 'features/onboarding/role_selection_screen.dart';
@@ -6,6 +7,7 @@ import 'features/server_dashboard/server_dashboard_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('id_ID', null);
 
   final roleController = RoleController();
   await roleController.loadRole();
