@@ -386,11 +386,12 @@ class DiscoveryService extends ChangeNotifier {
     int port, {
     String? name,
     String method = 'Langsung',
+    Duration timeout = const Duration(milliseconds: 1500),
   }) async {
     final dio = Dio(BaseOptions(
       baseUrl: 'http://$ip:$port/api/v1',
-      connectTimeout: const Duration(milliseconds: 600),
-      receiveTimeout: const Duration(milliseconds: 600),
+      connectTimeout: timeout,
+      receiveTimeout: timeout,
     ));
 
     final stopwatch = Stopwatch()..start();
@@ -429,37 +430,59 @@ class DiscoveryService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Manual override to connect to a specific server URL or IP
+  /// Manual override to connect to a specific server URL or IP with full diagnostics
   Future<ConnectionTestResult> setManualHost(String input) async {
-    String ip = input.trim();
+    String cleaned = input.trim();
+    if (cleaned.isEmpty) {
+      return ConnectionTestResult(
+        success: false,
+        url: '',
+        latencyMs: 0,
+        message: 'Alamat IP tidak boleh kosong.',
+      );
+    }
+
+    String ip = cleaned;
     int port = 8080;
 
-    // Parse URL if provided as http://ip:port/api/v1
-    if (ip.startsWith('http://') || ip.startsWith('https://')) {
-      final uri = Uri.tryParse(ip);
-      if (uri != null) {
+    // Normalize URL
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+      final uri = Uri.tryParse(cleaned);
+      if (uri != null && uri.host.isNotEmpty) {
         ip = uri.host;
         port = uri.port > 0 ? uri.port : 8080;
       }
-    } else if (ip.contains(':')) {
-      final parts = ip.split(':');
+    } else if (cleaned.contains(':')) {
+      final parts = cleaned.split(':');
       ip = parts[0];
-      port = int.tryParse(parts[1]) ?? 8080;
+      final portPart = parts[1].split('/')[0];
+      port = int.tryParse(portPart) ?? 8080;
+    } else if (cleaned.contains('/')) {
+      ip = cleaned.split('/')[0];
     }
 
-    final probed = await _probeHost(ip, port, method: 'Manual');
-    if (probed != null) {
-      _registerHost(probed);
-      return ConnectionTestResult(
-        success: true,
-        url: probed.baseUrl,
-        serviceName: probed.name,
-        latencyMs: probed.latencyMs,
-        freeBytes: probed.freeDiskBytes,
-        message: 'Berhasil terhubung ke host manual!',
+    final targetUrl = 'http://$ip:$port/api/v1';
+
+    // Test with generous 5 second timeout for manual input across Wi-Fi/LAN
+    final client = ApiClient(baseUrl: targetUrl);
+    final testRes = await client.testConnection();
+
+    if (testRes.success) {
+      final host = DiscoveredHost(
+        name: testRes.serviceName.isNotEmpty ? testRes.serviceName : 'Server Manual ($ip)',
+        host: ip,
+        port: port,
+        discoveryMethod: 'Manual',
+        latencyMs: testRes.latencyMs,
+        freeDiskBytes: testRes.freeBytes,
+        isOnline: true,
       );
+      _registerHost(host);
+      _statusMessage = 'Terhubung ke ${host.name}';
+      notifyListeners();
+
+      return testRes;
     } else {
-      final testUrl = 'http://$ip:$port/api/v1';
       final fallbackHost = DiscoveredHost(
         name: 'Server Manual ($ip)',
         host: ip,
@@ -468,11 +491,23 @@ class DiscoveryService extends ChangeNotifier {
         isOnline: false,
       );
       _registerHost(fallbackHost);
+      notifyListeners();
+
+      // Formulate helpful troubleshooting diagnosis message
+      String diagnostic = testRes.message;
+      final errLower = testRes.error?.toLowerCase() ?? '';
+      if (errLower.contains('timeout') || errLower.contains('timed out')) {
+        diagnostic = 'Koneksi ke $targetUrl waktu habis (Timeout).\n\nKemungkinan penyebab:\n1. Windows Firewall memblokir Port 8080 (Jalankan setup_firewall.bat di PC).\n2. Profil jaringan di Windows masih "Public Network" (Ubah ke "Private Network").\n3. Fitur AP Isolation / Client Isolation aktif di router Wi-Fi.';
+      } else if (errLower.contains('refused') || errLower.contains('errno = 61')) {
+        diagnostic = 'Koneksi ditolak (Connection Refused).\n\nPC ditemukan, namun server Sam Connected belum berjalan di port $port. Pastikan SamConnectedServer.exe menyala di PC.';
+      }
+
       return ConnectionTestResult(
         success: false,
-        url: testUrl,
+        url: targetUrl,
         latencyMs: 0,
-        message: 'Server tidak merespons di $testUrl. Pastikan server aktif.',
+        error: testRes.error,
+        message: diagnostic,
       );
     }
   }

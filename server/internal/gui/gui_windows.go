@@ -25,14 +25,14 @@ func HideConsoleWindow() {
 }
 
 // LaunchGUI initializes and opens the native Windows WebView2 application window
-func LaunchGUI(url string, initialStorage string, onSelectFolder func() string, onOpenExplorer func(path string), onExit func()) {
+func LaunchGUI(url string, initialStorage string, onSelectFolder func() string, onOpenExplorer func(path string), onExit func()) bool {
 	// Hide black console window so only the GUI appears
 	HideConsoleWindow()
 
 	w := webview2.New(false)
 	if w == nil {
 		log.Printf("[WARN] WebView2 is not available on this machine. Falling back to background server.")
-		return
+		return false
 	}
 	defer w.Destroy()
 
@@ -53,4 +53,5 @@ func LaunchGUI(url string, initialStorage string, onSelectFolder func() string, 
 	if onExit != nil {
 		onExit()
 	}
+	return true
 }

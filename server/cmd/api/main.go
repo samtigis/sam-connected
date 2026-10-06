@@ -190,7 +190,7 @@ func main() {
 	if !isHeadless {
 		log.Printf("[GUI] Launching native Windows Host Dashboard window (%s)...", guiURL)
 		runtime.LockOSThread()
-		gui.LaunchGUI(
+		guiLaunched := gui.LaunchGUI(
 			guiURL,
 			*storageFlag,
 			func() string {
@@ -204,6 +204,11 @@ func main() {
 				log.Printf("[GUI] Native window closed by user. Exiting application...")
 			},
 		)
+		if !guiLaunched {
+			log.Printf("[INFO] Running in background server mode. Dashboard available at: %s", guiURL)
+			sig := <-shutdownChan
+			log.Printf("[SHUTDOWN] Received signal: %s. Initiating graceful termination...", sig)
+		}
 	} else {
 		log.Printf("[INFO] Running in headless/CLI mode. Dashboard available at: %s", serverAddr)
 		// Wait for shutdown signal

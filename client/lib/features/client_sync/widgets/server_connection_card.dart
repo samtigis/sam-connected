@@ -201,14 +201,81 @@ class _ServerConnectionCardState extends State<ServerConnectionCard> {
             onPressed: () async {
               final val = ctrl.text.trim();
               Navigator.pop(ctx);
-              if (val.isNotEmpty) {
+              if (val.isNotEmpty && mounted) {
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        ),
+                        const SizedBox(width: 12),
+                        Text('Menghubungkan ke $val...'),
+                      ],
+                    ),
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+
                 final res = await widget.discoveryService.setManualHost(val);
                 if (widget.onServerUrlChanged != null && res.url.isNotEmpty) {
                   widget.onServerUrlChanged!(res.url);
                 }
+
+                if (!mounted) return;
+                messenger.hideCurrentSnackBar();
+
+                if (res.success) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      backgroundColor: const Color(0xFF16A34A),
+                      content: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(res.message)),
+                        ],
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                } else {
+                  _showFailureDialog(res.message);
+                }
               }
             },
             child: const Text('Hubungkan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFailureDialog(String message) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 24),
+            SizedBox(width: 8),
+            Text('Gagal Terhubung ke Server', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            message,
+            style: const TextStyle(fontSize: 13, height: 1.4),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: const Text('Mengerti'),
           ),
         ],
       ),

@@ -6,6 +6,7 @@ package gui
 func HideConsoleWindow() {}
 
 // LaunchGUI stub for non-windows
-func LaunchGUI(url string, initialStorage string, onSelectFolder func() string, onOpenExplorer func(path string), onExit func()) {
+func LaunchGUI(url string, initialStorage string, onSelectFolder func() string, onOpenExplorer func(path string), onExit func()) bool {
 	// No-op on non-windows
+	return false
 }
