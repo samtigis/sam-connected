@@ -159,7 +159,7 @@ func (h *MediaHandler) GetTimeline(c *fiber.Ctx) error {
 		groupsMap[dateKey] = append(groupsMap[dateKey], item)
 	}
 
-	var timeline []TimelineGroup
+	timeline := make([]TimelineGroup, 0)
 	for _, date := range orderedDates {
 		timeline = append(timeline, TimelineGroup{
 			Date:  date,

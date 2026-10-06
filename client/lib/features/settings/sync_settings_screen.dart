@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/discovery_service.dart';
 import '../client_sync/auto_sync_service.dart';
+import '../client_sync/widgets/server_connection_card.dart';
 
 class SyncSettingsScreen extends StatefulWidget {
   final AutoSyncService autoSyncService;
   final String currentServerUrl;
   final Function(String) onUpdateServerUrl;
+  final DiscoveryService? discoveryService;
+  final ApiClient? apiClient;
 
   const SyncSettingsScreen({
     super.key,
     required this.autoSyncService,
     required this.currentServerUrl,
     required this.onUpdateServerUrl,
+    this.discoveryService,
+    this.apiClient,
   });
 
   @override
@@ -225,22 +232,29 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
           ),
           const SizedBox(height: 12),
 
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
-            ),
-            child: ListTile(
-              title: const Text('Alamat Host Server'),
-              subtitle: Text(
-                widget.currentServerUrl,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          if (widget.discoveryService != null && widget.apiClient != null)
+            ServerConnectionCard(
+              discoveryService: widget.discoveryService!,
+              apiClient: widget.apiClient!,
+              onServerUrlChanged: widget.onUpdateServerUrl,
+            )
+          else
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
               ),
-              trailing: const Icon(Icons.edit_rounded, size: 20),
-              onTap: _showEditServerDialog,
+              child: ListTile(
+                title: const Text('Alamat Host Server'),
+                subtitle: Text(
+                  widget.currentServerUrl,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                ),
+                trailing: const Icon(Icons.edit_rounded, size: 20),
+                onTap: _showEditServerDialog,
+              ),
             ),
-          ),
         ],
       ),
     );

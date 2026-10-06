@@ -21,6 +21,54 @@ class ApiClient {
     _dio.options.baseUrl = newUrl;
   }
 
+  /// Detailed connection test to verify latency and storage status
+  Future<ConnectionTestResult> testConnection({String? customUrl}) async {
+    final targetUrl = customUrl ?? _baseUrl;
+    final stopwatch = Stopwatch()..start();
+    try {
+      final testDio = Dio(BaseOptions(
+        baseUrl: targetUrl,
+        connectTimeout: const Duration(seconds: 4),
+        receiveTimeout: const Duration(seconds: 4),
+      ));
+      final response = await testDio.get('/ping');
+      stopwatch.stop();
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final disk = data['disk'] as Map<String, dynamic>?;
+        final freeBytes = (disk?['free_bytes'] as num?)?.toInt() ?? 0;
+        final totalBytes = (disk?['total_bytes'] as num?)?.toInt() ?? 0;
+        final serviceName = data['service']?.toString() ?? 'Sam Connected Server';
+
+        return ConnectionTestResult(
+          success: true,
+          url: targetUrl,
+          serviceName: serviceName,
+          latencyMs: stopwatch.elapsedMilliseconds,
+          freeBytes: freeBytes,
+          totalBytes: totalBytes,
+          message: 'Server aktif dan siap menerima pencadangan.',
+        );
+      }
+      return ConnectionTestResult(
+        success: false,
+        url: targetUrl,
+        latencyMs: stopwatch.elapsedMilliseconds,
+        message: 'Respons server tidak sesuai (status ${response.statusCode}).',
+      );
+    } catch (e) {
+      stopwatch.stop();
+      return ConnectionTestResult(
+        success: false,
+        url: targetUrl,
+        latencyMs: stopwatch.elapsedMilliseconds,
+        error: e.toString(),
+        message: 'Tidak dapat terhubung ke server di $targetUrl.',
+      );
+    }
+  }
+
   /// Check server health & dynamic storage capacity
   /// GET /api/v1/ping
   Future<Map<String, dynamic>> ping() async {
@@ -166,3 +214,34 @@ class ApiClient {
     return response.statusCode == 200;
   }
 }
+
+class ConnectionTestResult {
+  final bool success;
+  final String url;
+  final String serviceName;
+  final int latencyMs;
+  final int freeBytes;
+  final int totalBytes;
+  final String message;
+  final String? error;
+
+  ConnectionTestResult({
+    required this.success,
+    required this.url,
+    this.serviceName = '',
+    required this.latencyMs,
+    this.freeBytes = 0,
+    this.totalBytes = 0,
+    required this.message,
+    this.error,
+  });
+
+  String get formattedFreeDisk {
+    if (freeBytes <= 0) return 'Tidak diketahui';
+    final gb = freeBytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return '${gb.toStringAsFixed(1)} GB';
+    final mb = freeBytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(0)} MB';
+  }
+}
+

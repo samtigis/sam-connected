@@ -8,6 +8,7 @@ import '../../core/role/role_controller.dart';
 import '../onboarding/role_selection_screen.dart';
 import 'gallery_scanner_service.dart';
 import 'sync_coordinator.dart';
+import 'widgets/server_connection_card.dart';
 
 class ClientSyncScreen extends StatefulWidget {
   final ApiClient? apiClient;
@@ -69,10 +70,9 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
   }
 
   void _onDiscoveryUpdate() {
-    if (_discoveryService.servers.isNotEmpty &&
-        _currentServerUrl == 'http://127.0.0.1:8080/api/v1') {
-      final firstFound = _discoveryService.servers.first;
-      _setServer(firstFound.baseUrl);
+    final active = _discoveryService.activeHost;
+    if (active != null && active.baseUrl != _currentServerUrl) {
+      _setServer(active.baseUrl, notify: false);
     }
     if (mounted) setState(() {});
   }
@@ -91,14 +91,16 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
     }
   }
 
-  void _setServer(String url) {
+  void _setServer(String url, {bool notify = true}) {
     setState(() {
       _currentServerUrl = url;
       _apiClient.updateBaseUrl(url);
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Terhubung ke host: $url')),
-    );
+    if (notify && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Terhubung ke host: $url')),
+      );
+    }
   }
 
   void _showManualServerDialog() {
@@ -202,8 +204,12 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Server Discovery Status Bar
-              _buildServerStatusBar(theme),
+              // Server Discovery & Connection Status Card
+              ServerConnectionCard(
+                discoveryService: _discoveryService,
+                apiClient: _apiClient,
+                onServerUrlChanged: (url) => _setServer(url, notify: true),
+              ),
               const SizedBox(height: 16),
 
               // Main Backup Card
@@ -260,55 +266,6 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
     );
   }
 
-  Widget _buildServerStatusBar(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer.withOpacity(0.4),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.wifi_tethering_rounded, color: theme.colorScheme.primary, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Tujuan Host Server:',
-                  style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
-                ),
-                Text(
-                  _currentServerUrl,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'monospace',
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          if (_discoveryService.servers.isNotEmpty)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.arrow_drop_down_circle_outlined),
-              tooltip: 'Ditemukan ${_discoveryService.servers.length} server di Wi-Fi',
-              onSelected: _setServer,
-              itemBuilder: (ctx) => _discoveryService.servers
-                  .map(
-                    (s) => PopupMenuItem(
-                      value: s.baseUrl,
-                      child: Text('${s.name} (${s.host})'),
-                    ),
-                  )
-                  .toList(),
-            ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildHeroSyncCard(ThemeData theme, SyncProgressState state) {
     return Card(

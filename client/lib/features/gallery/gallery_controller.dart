@@ -34,13 +34,16 @@ class GalleryController extends ChangeNotifier {
   String? _errorMessage;
   bool _hasPermission = true;
 
-  List<GalleryMediaItem> _allMedia = [];
-  List<TimelineDateGroup> _timelineGroups = [];
+  // Separate states for Device Gallery vs Server Gallery
+  List<GalleryMediaItem> _deviceMedia = [];
+  List<TimelineDateGroup> _deviceTimelineGroups = [];
+  int _deviceTotalCount = 0;
+  int _deviceSyncedCount = 0;
+  int _deviceUnsyncedCount = 0;
 
-  // Summary counts for badges & dashboard
-  int _totalCount = 0;
-  int _syncedCount = 0;
-  int _unsyncedCount = 0;
+  List<GalleryMediaItem> _serverMedia = [];
+  List<TimelineDateGroup> _serverTimelineGroups = [];
+  int _serverTotalCount = 0;
 
   GalleryViewMode get viewMode => _viewMode;
   GalleryFilter get currentFilter => _currentFilter;
@@ -48,12 +51,22 @@ class GalleryController extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get hasPermission => _hasPermission;
-  List<GalleryMediaItem> get allMedia => _allMedia;
-  List<TimelineDateGroup> get timelineGroups => _timelineGroups;
-  int get totalCount => _totalCount;
-  int get syncedCount => _syncedCount;
-  int get unsyncedCount => _unsyncedCount;
   String get serverBaseUrl => _apiClient.baseUrl;
+
+  List<GalleryMediaItem> get allMedia =>
+      _viewMode == GalleryViewMode.device ? _deviceMedia : _serverMedia;
+
+  List<TimelineDateGroup> get timelineGroups =>
+      _viewMode == GalleryViewMode.device ? _deviceTimelineGroups : _serverTimelineGroups;
+
+  int get totalCount =>
+      _viewMode == GalleryViewMode.device ? _deviceTotalCount : _serverTotalCount;
+
+  int get syncedCount =>
+      _viewMode == GalleryViewMode.device ? _deviceSyncedCount : _serverTotalCount;
+
+  int get unsyncedCount =>
+      _viewMode == GalleryViewMode.device ? _deviceUnsyncedCount : 0;
 
   GalleryController(this._apiClient);
 
@@ -62,6 +75,8 @@ class GalleryController extends ChangeNotifier {
     _viewMode = mode;
     _currentFilter = GalleryFilter.all;
     _searchQuery = '';
+    _errorMessage = null;
+    notifyListeners();
     fetchGallery();
   }
 
@@ -100,8 +115,8 @@ class GalleryController extends ChangeNotifier {
       if (!_hasPermission) {
         _isLoading = false;
         _errorMessage = 'Izin akses galeri perangkat ditolak. Mohon izinkan akses foto di Pengaturan iOS/Android.';
-        _allMedia = [];
-        _timelineGroups = [];
+        _deviceMedia = [];
+        _deviceTimelineGroups = [];
         notifyListeners();
         return;
       }
@@ -113,11 +128,11 @@ class GalleryController extends ChangeNotifier {
 
       if (albums.isEmpty) {
         _isLoading = false;
-        _allMedia = [];
-        _timelineGroups = [];
-        _totalCount = 0;
-        _syncedCount = 0;
-        _unsyncedCount = 0;
+        _deviceMedia = [];
+        _deviceTimelineGroups = [];
+        _deviceTotalCount = 0;
+        _deviceSyncedCount = 0;
+        _deviceUnsyncedCount = 0;
         notifyListeners();
         return;
       }
@@ -152,11 +167,11 @@ class GalleryController extends ChangeNotifier {
         ));
       }
 
-      _allMedia = items;
-      _totalCount = items.length;
-      _syncedCount = synced;
-      _unsyncedCount = unsynced;
-      _rebuildTimeline();
+      _deviceMedia = items;
+      _deviceTotalCount = items.length;
+      _deviceSyncedCount = synced;
+      _deviceUnsyncedCount = unsynced;
+      _rebuildDeviceTimeline();
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -191,30 +206,29 @@ class GalleryController extends ChangeNotifier {
         }
       }
 
-      _allMedia = items;
-      _totalCount = serverTotal;
-      _syncedCount = serverTotal;
-      _unsyncedCount = 0;
-      _rebuildTimeline();
+      _serverMedia = items;
+      _serverTotalCount = serverTotal;
+      _rebuildServerTimeline();
       _isLoading = false;
       notifyListeners();
     } catch (e) {
       _isLoading = false;
-      _errorMessage = 'Gagal memuat galeri dari server: $e';
+      _serverMedia = [];
+      _serverTimelineGroups = [];
+      _serverTotalCount = 0;
+      _errorMessage = 'Tidak dapat terhubung ke server (${_apiClient.baseUrl}). Pastikan host server menyala di jaringan Wi-Fi lokal.';
       notifyListeners();
     }
   }
 
   /// Quickly refreshes sync status without re-scanning all assets from OS
   Future<void> refreshSyncStatus() async {
-    if (_viewMode != GalleryViewMode.device) return;
-
     try {
       final syncedAssetIds = await _localDb.getAllSyncedAssetIds();
       int synced = 0;
       int unsynced = 0;
 
-      final updated = _allMedia.map((m) {
+      final updated = _deviceMedia.map((m) {
         final isSynced = syncedAssetIds.contains(m.id);
         if (isSynced) {
           synced++;
@@ -224,10 +238,10 @@ class GalleryController extends ChangeNotifier {
         return m.copyWith(isSynced: isSynced);
       }).toList();
 
-      _allMedia = updated;
-      _syncedCount = synced;
-      _unsyncedCount = unsynced;
-      _rebuildTimeline();
+      _deviceMedia = updated;
+      _deviceSyncedCount = synced;
+      _deviceUnsyncedCount = unsynced;
+      _rebuildDeviceTimeline();
       notifyListeners();
     } catch (_) {}
   }
@@ -257,12 +271,12 @@ class GalleryController extends ChangeNotifier {
       await _localDb.markSyncedByAssetId(item.id, serverId: serverId);
 
       // Update in-memory item state to backed up (green checkmark)
-      final idx = _allMedia.indexWhere((m) => m.id == item.id);
+      final idx = _deviceMedia.indexWhere((m) => m.id == item.id);
       if (idx != -1) {
-        _allMedia[idx] = _allMedia[idx].copyWith(isSynced: true, hash: hash);
-        _syncedCount++;
-        if (_unsyncedCount > 0) _unsyncedCount--;
-        _rebuildTimeline();
+        _deviceMedia[idx] = _deviceMedia[idx].copyWith(isSynced: true, hash: hash);
+        _deviceSyncedCount++;
+        if (_deviceUnsyncedCount > 0) _deviceUnsyncedCount--;
+        _rebuildDeviceTimeline();
         notifyListeners();
       }
       return true;
@@ -273,7 +287,15 @@ class GalleryController extends ChangeNotifier {
   }
 
   void _rebuildTimeline() {
-    List<GalleryMediaItem> filtered = _allMedia;
+    if (_viewMode == GalleryViewMode.device) {
+      _rebuildDeviceTimeline();
+    } else {
+      _rebuildServerTimeline();
+    }
+  }
+
+  void _rebuildDeviceTimeline() {
+    List<GalleryMediaItem> filtered = _deviceMedia;
 
     if (_currentFilter == GalleryFilter.unsynced) {
       filtered = filtered.where((m) => !m.isSynced).toList();
@@ -289,14 +311,41 @@ class GalleryController extends ChangeNotifier {
       filtered = filtered.where((m) => m.title.toLowerCase().contains(_searchQuery)).toList();
     }
 
-    // Regroup by dateGroupKey
     final Map<String, List<GalleryMediaItem>> map = {};
     for (final item in filtered) {
       final key = item.dateGroupKey;
       map.putIfAbsent(key, () => []).add(item);
     }
 
-    _timelineGroups = map.entries.map((e) {
+    _deviceTimelineGroups = map.entries.map((e) {
+      return TimelineDateGroup(
+        title: e.key,
+        date: e.value.first.createDateTime,
+        items: e.value,
+      );
+    }).toList();
+  }
+
+  void _rebuildServerTimeline() {
+    List<GalleryMediaItem> filtered = _serverMedia;
+
+    if (_currentFilter == GalleryFilter.photos) {
+      filtered = filtered.where((m) => !m.isVideo).toList();
+    } else if (_currentFilter == GalleryFilter.videos) {
+      filtered = filtered.where((m) => m.isVideo).toList();
+    }
+
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((m) => m.title.toLowerCase().contains(_searchQuery)).toList();
+    }
+
+    final Map<String, List<GalleryMediaItem>> map = {};
+    for (final item in filtered) {
+      final key = item.dateGroupKey;
+      map.putIfAbsent(key, () => []).add(item);
+    }
+
+    _serverTimelineGroups = map.entries.map((e) {
       return TimelineDateGroup(
         title: e.key,
         date: e.value.first.createDateTime,

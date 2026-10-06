@@ -70,12 +70,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
   }
 
   void _onDiscoveryUpdate() {
-    if (_discoveryService.discoveredHost != null) {
-      final host = _discoveryService.discoveredHost!;
-      final newUrl = 'http://${host.ip}:${host.port}/api/v1';
-      if (newUrl != _currentServerUrl) {
-        _updateServerUrl(newUrl);
-      }
+    final active = _discoveryService.activeHost;
+    if (active != null && active.baseUrl != _currentServerUrl) {
+      _updateServerUrl(active.baseUrl);
     }
   }
 
@@ -92,6 +89,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     if (state == AppLifecycleState.resumed) {
       _autoSyncService.onAppResume();
       _galleryController.fetchGallery();
+      _discoveryService.startDiscovery();
     }
   }
 
@@ -122,6 +120,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
         autoSyncService: _autoSyncService,
         currentServerUrl: _currentServerUrl,
         onUpdateServerUrl: _updateServerUrl,
+        discoveryService: _discoveryService,
+        apiClient: _apiClient,
       ),
     ];
 
