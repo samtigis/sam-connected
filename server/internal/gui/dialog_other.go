@@ -20,6 +20,12 @@ func OpenFolderInExplorer(path string) error {
 	return cmd.Start()
 }
 
+// OpenFileInDefaultApp launches default application on macOS / Linux
+func OpenFileInDefaultApp(path string) error {
+	cmd := exec.Command("open", path)
+	return cmd.Start()
+}
+
 // GetLocalIPv4 returns the prioritized physical LAN IPv4 address
 func GetLocalIPv4() string {
 	return discovery.GetBestLocalIPv4()

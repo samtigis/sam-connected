@@ -65,6 +65,9 @@ func (s *StorageService) SaveUploadedFile(
 	clientHash string,
 	reader io.Reader,
 	clientTakenAt *time.Time,
+	width int,
+	height int,
+	duration float64,
 	thumbReader ...io.Reader,
 ) (*database.Media, error) {
 	cleanDeviceID := SanitizeDeviceID(deviceID)
@@ -164,6 +167,9 @@ func (s *StorageService) SaveUploadedFile(
 		FileSize:     writtenBytes,
 		MimeType:     mimeType,
 		Extension:    ext,
+		Width:        width,
+		Height:       height,
+		Duration:     duration,
 		TakenAt:      clientTakenAt,
 		HasThumbnail: false,
 		CreatedAt:    time.Now(),
@@ -215,15 +221,28 @@ func (s *StorageService) SaveUploadedFile(
 			}
 		})
 	} else if IsVideoExtension(ext) {
-		// Attempt video thumbnail generation via ffmpeg if available
+		// Attempt video thumbnail generation and duration extraction via ffmpeg if available
 		go func() {
+			updates := make(map[string]interface{})
+			if dur, w, h, err := s.ThumbService.ExtractVideoMetadata(targetFullPath); err == nil {
+				if media.Duration <= 0 && dur > 0 {
+					updates["duration"] = dur
+				}
+				if media.Width <= 0 && w > 0 {
+					updates["width"] = w
+				}
+				if media.Height <= 0 && h > 0 {
+					updates["height"] = h
+				}
+			}
 			if err := s.ThumbService.GenerateVideoThumbnail(targetFullPath, thumbFullPath); err == nil {
-				s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(map[string]interface{}{
-					"has_thumbnail":  true,
-					"thumbnail_path": thumbFullPath,
-				})
+				updates["has_thumbnail"] = true
+				updates["thumbnail_path"] = thumbFullPath
 			} else {
 				log.Printf("[STORAGE] Video thumbnail generation failed for %s: %v", targetFullPath, err)
+			}
+			if len(updates) > 0 {
+				s.DB.Model(&database.Media{}).Where("id = ?", media.ID).Updates(updates)
 			}
 		}()
 	}
@@ -284,12 +303,50 @@ func (s *StorageService) BackfillMissingThumbnails() {
 					successCount++
 				}
 			} else if IsVideoExtension(m.Extension) {
+				updates := make(map[string]interface{})
+				if m.Duration <= 0 || m.Width <= 0 {
+					if dur, w, h, err := s.ThumbService.ExtractVideoMetadata(m.FilePath); err == nil {
+						if m.Duration <= 0 && dur > 0 {
+							updates["duration"] = dur
+						}
+						if m.Width <= 0 && w > 0 {
+							updates["width"] = w
+						}
+						if m.Height <= 0 && h > 0 {
+							updates["height"] = h
+						}
+					}
+				}
 				if err := s.ThumbService.GenerateVideoThumbnail(m.FilePath, thumbPath); err == nil {
-					s.DB.Model(&database.Media{}).Where("id = ?", m.ID).Updates(map[string]interface{}{
-						"has_thumbnail":  true,
-						"thumbnail_path": thumbPath,
-					})
+					updates["has_thumbnail"] = true
+					updates["thumbnail_path"] = thumbPath
 					successCount++
+				}
+				if len(updates) > 0 {
+					s.DB.Model(&database.Media{}).Where("id = ?", m.ID).Updates(updates)
+				}
+			}
+		}
+
+		// Also backfill duration for videos that already have thumbnails but 0 duration
+		var zeroDurVideos []database.Media
+		if err := s.DB.Where("mime_type LIKE 'video/%' AND (duration = 0 OR duration IS NULL)").Find(&zeroDurVideos).Error; err == nil && len(zeroDurVideos) > 0 {
+			log.Printf("[METADATA] Checking %d videos with 0 duration...", len(zeroDurVideos))
+			for _, vm := range zeroDurVideos {
+				p := vm.FilePath
+				if _, err := os.Stat(p); os.IsNotExist(err) {
+					p = filepath.Join(s.BaseDir, vm.FilePath)
+				}
+				if dur, w, h, err := s.ThumbService.ExtractVideoMetadata(p); err == nil && dur > 0 {
+					u := map[string]interface{}{"duration": dur}
+					if vm.Width <= 0 && w > 0 {
+						u["width"] = w
+					}
+					if vm.Height <= 0 && h > 0 {
+						u["height"] = h
+					}
+					s.DB.Model(&database.Media{}).Where("id = ?", vm.ID).Updates(u)
+					log.Printf("[METADATA] Video ID %d duration backfilled: %.2fs", vm.ID, dur)
 				}
 			}
 		}

@@ -116,6 +116,9 @@ class ApiClient {
     required String deviceId,
     required String clientHash,
     DateTime? takenAt,
+    int? width,
+    int? height,
+    double? duration,
     File? thumbnailFile,
     ProgressCallback? onSendProgress,
   }) async {
@@ -125,6 +128,9 @@ class ApiClient {
       'device_id': deviceId,
       'client_hash': clientHash,
       if (takenAt != null) 'taken_at': takenAt.toIso8601String(),
+      if (width != null && width > 0) 'width': width.toString(),
+      if (height != null && height > 0) 'height': height.toString(),
+      if (duration != null && duration > 0) 'duration': duration.toString(),
       'file': await MultipartFile.fromFile(
         file.path,
         filename: fileName,

@@ -856,7 +856,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
                     const SizedBox(width: 2),
                     Text(
-                      item.formattedDuration,
+                      item.videoDuration > Duration.zero
+                          ? item.formattedDuration
+                          : 'Video',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,

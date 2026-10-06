@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:photo_manager/photo_manager.dart';
 import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/device_identity.dart';
@@ -244,6 +245,11 @@ class SyncCoordinator extends ChangeNotifier {
             deviceId: deviceId,
             clientHash: item.hash,
             takenAt: item.entity.createDateTime,
+            width: item.entity.width > 0 ? item.entity.width : null,
+            height: item.entity.height > 0 ? item.entity.height : null,
+            duration: item.entity.type == AssetType.video && item.entity.duration > 0
+                ? item.entity.duration.toDouble()
+                : null,
             onSendProgress: (sent, total) {
               if (total > 0) {
                 final double p = sent / total;

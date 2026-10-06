@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -158,8 +159,12 @@ func (h *SyncHandler) Upload(c *fiber.Ctx) error {
 		}
 	}
 
+	width, _ := strconv.Atoi(c.FormValue("width"))
+	height, _ := strconv.Atoi(c.FormValue("height"))
+	duration, _ := strconv.ParseFloat(c.FormValue("duration"), 64)
+
 	// Stream and save
-	media, err := h.Storage.SaveUploadedFile(deviceID, fileHeader.Filename, clientHash, srcStream, clientTakenAt, thumbStream)
+	media, err := h.Storage.SaveUploadedFile(deviceID, fileHeader.Filename, clientHash, srcStream, clientTakenAt, width, height, duration, thumbStream)
 	if err != nil {
 		if errors.Is(err, service.ErrHashMismatch) {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{

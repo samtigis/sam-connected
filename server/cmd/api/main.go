@@ -152,6 +152,7 @@ func main() {
 			systemGroup.Post("/choose-folder", systemHandler.ChooseFolder)
 			systemGroup.Post("/set-folder", systemHandler.SetFolder)
 			systemGroup.Post("/open-folder", systemHandler.OpenFolder)
+			systemGroup.Post("/open-file", systemHandler.OpenFile)
 			systemGroup.Get("/logs", systemHandler.GetLogs)
 			systemGroup.Post("/clear-logs", systemHandler.ClearLogs)
 		}

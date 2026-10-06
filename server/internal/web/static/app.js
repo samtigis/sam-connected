@@ -364,7 +364,16 @@ async function loadGallery() {
       card.dataset.index = index;
 
       const isVideo = item.mime_type && item.mime_type.startsWith('video/');
+      const isHeic = (item.file_name && /\.(heic|heif)$/i.test(item.file_name)) ||
+                     (item.extension && /\.(heic|heif)$/i.test(item.extension));
       const thumbUrl = `/api/v1/media/${item.id}/thumb`;
+
+      let durationBadge = '▶ Video';
+      if (isVideo && item.duration > 0) {
+        const m = Math.floor(item.duration / 60);
+        const s = Math.floor(item.duration % 60);
+        durationBadge = `▶ ${m}:${String(s).padStart(2, '0')}`;
+      }
 
       card.innerHTML = `
         <img class="media-thumb" src="${thumbUrl}" loading="lazy" alt="${escapeHtml(item.file_name)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -372,7 +381,8 @@ async function loadGallery() {
           <div class="fallback-icon">${isVideo ? '🎬' : '🖼️'}</div>
           <div class="fallback-name">${escapeHtml(item.file_name)}</div>
         </div>
-        ${isVideo ? `<div class="media-badge video">▶ Video</div>` : ''}
+        ${isVideo ? `<div class="media-badge video">${durationBadge}</div>` : ''}
+        ${isHeic ? `<div class="media-badge" style="position: absolute; top: 6px; left: 6px; background: rgba(14, 165, 233, 0.85); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">HEIC</div>` : ''}
         ${item.is_favorite ? `<div class="media-badge fav">⭐</div>` : ''}
         <div class="media-overlay">
           <div>${escapeHtml(item.file_name)}</div>
@@ -432,12 +442,25 @@ function openLightbox(index) {
   const modal = document.getElementById('lightboxModal');
   const mediaContainer = document.getElementById('lightboxMediaContainer');
   const isVideo = item.mime_type && item.mime_type.startsWith('video/');
+  const isHeic = (item.file_name && /\.(heic|heif)$/i.test(item.file_name)) ||
+                 (item.extension && /\.(heic|heif)$/i.test(item.extension)) ||
+                 (item.mime_type && /heic|heif/i.test(item.mime_type));
   const rawUrl = `/api/v1/media/${item.id}/raw/${encodeURIComponent(item.file_name || 'media')}`;
+  const thumbUrl = `/api/v1/media/${item.id}/thumb`;
 
   document.getElementById('lightboxFileName').textContent = item.file_name;
   document.getElementById('metaTakenAt').textContent = item.taken_at ? new Date(item.taken_at).toLocaleString('id-ID') : '-';
   document.getElementById('metaDevice').textContent = item.device_id || 'Unknown';
-  document.getElementById('metaResolution').textContent = (item.width && item.height) ? `${item.width} × ${item.height} px` : '-';
+
+  const durSec = item.duration || 0;
+  if (durSec > 0) {
+    const mins = Math.floor(durSec / 60);
+    const secs = Math.floor(durSec % 60);
+    document.getElementById('metaResolution').textContent = `${(item.width && item.height) ? `${item.width} × ${item.height} px • ` : ''}Durasi: ${mins}:${String(secs).padStart(2, '0')}`;
+  } else {
+    document.getElementById('metaResolution').textContent = (item.width && item.height) ? `${item.width} × ${item.height} px` : '-';
+  }
+
   document.getElementById('metaSize').textContent = formatBytes(item.file_size);
   document.getElementById('metaHash').textContent = item.hash || '-';
 
@@ -469,12 +492,103 @@ function openLightbox(index) {
 
   if (isVideo) {
     mediaContainer.innerHTML = `
-      <video src="${rawUrl}" controls autoplay style="max-height: 100%; max-width: 100%;"></video>
+      <div style="display: flex; flex-direction: column; align-items: center; max-height: 100%; max-width: 100%;">
+        <video src="${rawUrl}" controls autoplay style="max-height: 75vh; max-width: 100%; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"></video>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <button id="btnOpenInSystemPlayer" class="btn btn-sm btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            🎬 Buka di Player Windows (VLC / Media Player)
+          </button>
+          <a href="${rawUrl}" download="${escapeHtml(item.file_name)}" class="btn btn-sm btn-outline" style="padding: 6px 12px; font-size: 12px;">
+            📥 Unduh File Asli
+          </a>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;">
+          💡 Tip: Video format Apple (HEVC/QuickTime). Jika layar hitam di browser Windows, klik tombol "Buka di Player Windows" di atas untuk memutar langsung dengan akselerasi penuh.
+        </div>
+      </div>
     `;
+
+    const openSysBtn = document.getElementById('btnOpenInSystemPlayer');
+    if (openSysBtn) {
+      openSysBtn.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/v1/system/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ media_id: item.id }),
+          });
+          if (res.ok) {
+            showToast('Membuka video di pemutar Windows...');
+          } else {
+            showToast('Gagal membuka di pemutar Windows.');
+          }
+        } catch (e) {
+          showToast('Error: ' + e.message);
+        }
+      });
+    }
+  } else if (isHeic) {
+    mediaContainer.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; max-height: 100%; max-width: 100%;">
+        <img src="${thumbUrl}" alt="${escapeHtml(item.file_name)}" style="max-height: 75vh; max-width: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <button id="btnOpenInSystemPhoto" class="btn btn-sm btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            🖼️ Buka di Aplikasi Photos Windows
+          </button>
+          <a href="${rawUrl}" download="${escapeHtml(item.file_name)}" class="btn btn-sm btn-outline" style="padding: 6px 12px; font-size: 12px;">
+            📥 Unduh File Asli (.HEIC)
+          </a>
+        </div>
+        <div style="font-size: 11px; color: #38bdf8; margin-top: 6px; text-align: center; background: rgba(56, 189, 248, 0.1); padding: 4px 12px; border-radius: 6px;">
+          📷 Format Apple HEIC (Pratinjau JPEG Kualitas Tinggi) • Klik "Buka di Aplikasi Photos" untuk melihat file asli.
+        </div>
+      </div>
+    `;
+
+    const openPhotoBtn = document.getElementById('btnOpenInSystemPhoto');
+    if (openPhotoBtn) {
+      openPhotoBtn.addEventListener('click', async () => {
+        try {
+          const res = await fetch('/api/v1/system/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ media_id: item.id }),
+          });
+          if (res.ok) {
+            showToast('Membuka foto di aplikasi Windows Photos...');
+          } else {
+            showToast('Gagal membuka foto di Windows.');
+          }
+        } catch (e) {
+          showToast('Error: ' + e.message);
+        }
+      });
+    }
   } else {
     mediaContainer.innerHTML = `
-      <img src="${rawUrl}" alt="${item.file_name}" style="max-height: 100%; max-width: 100%;">
+      <div style="display: flex; flex-direction: column; align-items: center; max-height: 100%; max-width: 100%;">
+        <img src="${rawUrl}" alt="${escapeHtml(item.file_name)}" style="max-height: 80vh; max-width: 100%; object-fit: contain; border-radius: 8px;" onerror="this.onerror=null; this.src='${thumbUrl}';">
+        <div style="margin-top: 8px;">
+          <button id="btnOpenInSystemPhoto" class="btn btn-sm btn-outline" style="padding: 4px 12px; font-size: 12px;">
+            🖼️ Buka di Aplikasi Windows
+          </button>
+        </div>
+      </div>
     `;
+
+    const openPhotoBtn = document.getElementById('btnOpenInSystemPhoto');
+    if (openPhotoBtn) {
+      openPhotoBtn.addEventListener('click', async () => {
+        try {
+          await fetch('/api/v1/system/open-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ media_id: item.id }),
+          });
+          showToast('Membuka foto di Windows...');
+        } catch (_) {}
+      });
+    }
   }
 
   modal.classList.add('active');

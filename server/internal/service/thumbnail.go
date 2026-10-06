@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -180,5 +182,37 @@ func (s *ThumbnailService) GenerateVideoThumbnail(srcPath, destPath string) erro
 		return fmt.Errorf("ffmpeg failed: %w (output: %s)", err, string(out))
 	}
 	return nil
+}
+
+// ExtractVideoMetadata extracts duration (in seconds) and dimensions (width, height) using ffmpeg.
+func (s *ThumbnailService) ExtractVideoMetadata(srcPath string) (duration float64, width int, height int, err error) {
+	ffmpegPath := FindFFmpegPath()
+	if ffmpegPath == "" {
+		return 0, 0, 0, fmt.Errorf("ffmpeg not found")
+	}
+
+	cmd := exec.Command(ffmpegPath, "-i", srcPath)
+	out, _ := cmd.CombinedOutput()
+	outputStr := string(out)
+
+	// Parse duration: Duration: 00:01:23.45
+	durRegex := regexp.MustCompile(`Duration:\s*(\d+):(\d+):(\d+\.?\d*)`)
+	if matches := durRegex.FindStringSubmatch(outputStr); len(matches) == 4 {
+		h, _ := strconv.ParseFloat(matches[1], 64)
+		m, _ := strconv.ParseFloat(matches[2], 64)
+		sec, _ := strconv.ParseFloat(matches[3], 64)
+		duration = h*3600 + m*60 + sec
+	}
+
+	// Parse resolution: Video: ..., 1920x1080
+	resRegex := regexp.MustCompile(`Video:.*?(\d{2,5})x(\d{2,5})`)
+	if matches := resRegex.FindStringSubmatch(outputStr); len(matches) == 3 {
+		w, _ := strconv.Atoi(matches[1])
+		h, _ := strconv.Atoi(matches[2])
+		width = w
+		height = h
+	}
+
+	return duration, width, height, nil
 }
 

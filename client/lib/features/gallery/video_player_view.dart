@@ -109,6 +109,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           _isInitialized = true;
         });
         if (widget.isCurrentPage) {
+          // Auto-play when opened
+          _controller!.play();
           _startHideTimer();
         }
       }
@@ -124,6 +126,13 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   void _onControllerUpdate() {
     if (mounted) {
+      if (_controller != null && _controller!.value.hasError && !_hasError) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = _controller!.value.errorDescription ?? 'Gagal memutar video.';
+        });
+        return;
+      }
       setState(() {});
     }
   }
@@ -135,7 +144,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
       _controller!.pause();
       _showControlsTemporarily(stayVisible: true);
     } else {
-      if (_controller!.value.position >= _controller!.value.duration) {
+      final totalDur = _controller!.value.duration > Duration.zero
+          ? _controller!.value.duration
+          : widget.item.videoDuration;
+      if (totalDur > Duration.zero && _controller!.value.position >= totalDur) {
         _controller!.seekTo(Duration.zero);
       }
       _controller!.play();
@@ -153,13 +165,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
   void _startHideTimer() {
     _hideControlsTimer?.cancel();
-    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && _controller != null && _controller!.value.isPlaying) {
-        setState(() {
-          _showControls = false;
-        });
-      }
-    });
+    if (_controller != null && _controller!.value.isPlaying) {
+      _hideControlsTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted && _controller != null && _controller!.value.isPlaying) {
+          setState(() {
+            _showControls = false;
+          });
+        }
+      });
+    }
   }
 
   void _showControlsTemporarily({bool stayVisible = false}) {
@@ -228,7 +242,10 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
 
     final value = _controller!.value;
     final isPlaying = value.isPlaying;
-    final isFinished = value.position >= value.duration;
+    final totalDuration = value.duration > Duration.zero
+        ? value.duration
+        : (widget.item.videoDuration > Duration.zero ? widget.item.videoDuration : Duration.zero);
+    final isFinished = totalDuration > Duration.zero && value.position >= totalDuration;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -312,11 +329,11 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                         ),
                         child: Slider(
                           value: value.position.inMilliseconds
-                              .clamp(0, value.duration.inMilliseconds)
+                              .clamp(0, totalDuration.inMilliseconds > 0 ? totalDuration.inMilliseconds : 1)
                               .toDouble(),
                           min: 0.0,
-                          max: value.duration.inMilliseconds.toDouble() > 0
-                              ? value.duration.inMilliseconds.toDouble()
+                          max: totalDuration.inMilliseconds.toDouble() > 0
+                              ? totalDuration.inMilliseconds.toDouble()
                               : 1.0,
                           onChanged: (pos) {
                             _controller!.seekTo(Duration(milliseconds: pos.toInt()));
@@ -338,7 +355,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                                 onPressed: _togglePlayPause,
                               ),
                               Text(
-                                '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
+                                '${_formatDuration(value.position)} / ${_formatDuration(totalDuration)}',
                                 style: const TextStyle(color: Colors.white70, fontSize: 12),
                               ),
                             ],

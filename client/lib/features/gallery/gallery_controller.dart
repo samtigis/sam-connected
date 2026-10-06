@@ -314,7 +314,15 @@ class GalleryController extends ChangeNotifier {
                 }
               }
 
-              items.add(GalleryMediaItem.fromServerItem(mediaItem).copyWith(localEntity: entity));
+              final gItem = GalleryMediaItem.fromServerItem(mediaItem);
+              items.add(gItem.copyWith(
+                localEntity: entity,
+                videoDuration: (gItem.videoDuration == Duration.zero && entity != null && entity.duration > 0)
+                    ? Duration(seconds: entity.duration)
+                    : null,
+                width: (gItem.width == 0 && entity != null && entity.width > 0) ? entity.width : null,
+                height: (gItem.height == 0 && entity != null && entity.height > 0) ? entity.height : null,
+              ));
             }
           }
         }
@@ -392,6 +400,11 @@ class GalleryController extends ChangeNotifier {
           deviceId: deviceId,
           clientHash: hash,
           takenAt: item.createDateTime,
+          width: item.width > 0 ? item.width : null,
+          height: item.height > 0 ? item.height : null,
+          duration: item.isVideo && item.videoDuration.inSeconds > 0
+              ? item.videoDuration.inSeconds.toDouble()
+              : null,
           thumbnailFile: thumbFile,
         );
       } finally {

@@ -59,6 +59,13 @@ func OpenFolderInExplorer(path string) error {
 	return cmd.Start()
 }
 
+// OpenFileInDefaultApp launches the file in default Windows player / viewer (VLC, Media Player, Photos)
+func OpenFileInDefaultApp(path string) error {
+	cleanPath := filepath.Clean(path)
+	cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", cleanPath)
+	return cmd.Start()
+}
+
 // GetLocalIPv4 returns the prioritized physical LAN IPv4 address (filtering out virtual adapters)
 func GetLocalIPv4() string {
 	return discovery.GetBestLocalIPv4()

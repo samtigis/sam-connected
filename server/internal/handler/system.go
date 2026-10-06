@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -171,4 +172,48 @@ func (h *SystemHandler) GetLogs(c *fiber.Ctx) error {
 func (h *SystemHandler) ClearLogs(c *fiber.Ctx) error {
 	logbuffer.DefaultBuffer.Clear()
 	return c.JSON(fiber.Map{"status": "ok"})
+}
+
+// OpenFile opens a media file directly in Windows default application (Windows Media Player, VLC, Photos)
+func (h *SystemHandler) OpenFile(c *fiber.Ctx) error {
+	type Request struct {
+		MediaID uint   `json:"media_id"`
+		Path    string `json:"path"`
+	}
+	var req Request
+	_ = c.BodyParser(&req)
+
+	targetPath := req.Path
+	if targetPath == "" && req.MediaID > 0 {
+		var media database.Media
+		if err := h.DB.First(&media, req.MediaID).Error; err == nil {
+			targetPath = media.FilePath
+			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+				cand := filepath.Join(h.StorageSvc.BaseDir, media.FilePath)
+				if _, sErr := os.Stat(cand); sErr == nil {
+					targetPath = cand
+				} else {
+					_ = filepath.WalkDir(h.StorageSvc.BaseDir, func(p string, d os.DirEntry, err error) error {
+						if err == nil && !d.IsDir() && !strings.Contains(p, "thumbnails") && strings.Contains(strings.ToLower(d.Name()), strings.ToLower(media.Hash)) {
+							targetPath = p
+							return filepath.SkipAll
+						}
+						return nil
+					})
+				}
+			}
+		}
+	}
+
+	if targetPath == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "File media tidak ditemukan"})
+	}
+
+	if err := gui.OpenFileInDefaultApp(targetPath); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Gagal membuka aplikasi default: " + err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{"status": "ok", "path": targetPath})
 }
