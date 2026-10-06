@@ -5,6 +5,7 @@ import '../../core/database/local_database.dart';
 import '../../core/models/gallery_media_item.dart';
 import '../../core/models/media_item.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/device_identity.dart';
 import '../client_sync/smart_hasher.dart';
 
 enum GalleryViewMode { device, server }
@@ -201,10 +202,12 @@ class GalleryController extends ChangeNotifier {
       if (_currentFilter == GalleryFilter.photos) typeParam = 'image';
       if (_currentFilter == GalleryFilter.videos) typeParam = 'video';
 
-      // 1. Fetch connected/registered devices
+      // 1. Fetch connected/registered devices from server API
       try {
         _serverDevices = await _apiClient.getDevices();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[GalleryController] getDevices API failed: $e');
+      }
 
       // 2. Fetch timeline filtered by deviceId if set
       final res = await _apiClient.getMediaTimeline(
@@ -213,6 +216,39 @@ class GalleryController extends ChangeNotifier {
       );
       final groupsData = res['groups'] as List<dynamic>? ?? [];
       final int serverTotal = (res['total_media'] as num?)?.toInt() ?? 0;
+
+      // 3. Dynamically discover devices from timeline items if server API returned empty
+      final Map<String, int> dynamicDevCounts = {};
+      for (final g in groupsData) {
+        if (g is Map<String, dynamic>) {
+          final itemsRaw = g['items'] as List<dynamic>? ?? [];
+          for (final raw in itemsRaw) {
+            if (raw is Map<String, dynamic>) {
+              final dId = raw['device_id']?.toString().trim() ?? '';
+              if (dId.isNotEmpty) {
+                dynamicDevCounts[dId] = (dynamicDevCounts[dId] ?? 0) + 1;
+              }
+            }
+          }
+        }
+      }
+
+      if (_serverDevices.isEmpty && dynamicDevCounts.isNotEmpty) {
+        _serverDevices = dynamicDevCounts.entries.map((e) => {
+          'device_id': e.key,
+          'total_media': e.value,
+        }).toList();
+      } else if (dynamicDevCounts.isNotEmpty) {
+        final existing = _serverDevices.map((d) => d['device_id']?.toString() ?? '').toSet();
+        for (final entry in dynamicDevCounts.entries) {
+          if (!existing.contains(entry.key)) {
+            _serverDevices.add({
+              'device_id': entry.key,
+              'total_media': entry.value,
+            });
+          }
+        }
+      }
 
       // 3. Multi-strategy local asset resolution
       final assetIdByServerId = await _localDb.getServerIdToAssetIdMap();
@@ -333,7 +369,7 @@ class GalleryController extends ChangeNotifier {
       if (file == null || !await file.exists()) return false;
 
       final String hash = await SmartHasher.computeHash(file, isVideo: item.isVideo);
-      final String deviceId = Platform.localHostname.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+      final String deviceId = await DeviceIdentity.getDeviceId();
 
       File? thumbFile;
       if (item.isVideo) {

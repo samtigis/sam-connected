@@ -570,12 +570,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
     } else if (lower.contains('mac')) {
       icon = Icons.laptop_mac_rounded;
       name = 'MacBook';
+    } else if (lower == 'localhost' || lower == 'default' || lower.isEmpty) {
+      icon = Icons.devices_other_rounded;
+      name = 'Perangkat Utama';
     }
 
+    // Format clean label e.g. "iPad (601E)" or "iPhone (801E)"
     if (devId.contains('_')) {
       final parts = devId.split('_');
-      if (parts.length > 1) {
-        name = parts.sublist(1).join(' ');
+      if (parts.length >= 2 && parts.last.isNotEmpty) {
+        final suffix = parts.last;
+        if (lower.contains('ipad')) {
+          name = 'iPad ($suffix)';
+        } else if (lower.contains('iphone')) {
+          name = 'iPhone ($suffix)';
+        } else if (!lower.contains('localhost')) {
+          name = devId.replaceAll('_', ' ');
+        }
       }
     }
 

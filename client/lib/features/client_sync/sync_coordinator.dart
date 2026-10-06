@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/device_identity.dart';
 import 'gallery_scanner_service.dart';
 
 class SyncProgressState {
@@ -80,15 +80,7 @@ class SyncCoordinator extends ChangeNotifier {
   }
 
   Future<String> _getDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? id = prefs.getString('client_device_id');
-    if (id == null || id.isEmpty) {
-      final host = Platform.localHostname.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
-      final randomSuffix = DateTime.now().millisecondsSinceEpoch.toString().substring(8);
-      id = '${Platform.operatingSystem}_${host}_$randomSuffix';
-      await prefs.setString('client_device_id', id);
-    }
-    return id;
+    return await DeviceIdentity.getDeviceId();
   }
 
   void cancelSync() {
