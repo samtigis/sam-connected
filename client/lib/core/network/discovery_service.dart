@@ -154,16 +154,22 @@ class DiscoveryService extends ChangeNotifier {
 
       if (_udpSocket != null) {
         _udpSocket!.broadcastEnabled = true;
-        _udpSocket!.listen((event) {
-          if (event == RawSocketEvent.read) {
-            final dg = _udpSocket?.receive();
-            if (dg != null) {
-              _handleUdpPacket(dg);
+        _udpSocket!.listen(
+          (event) {
+            if (event == RawSocketEvent.read) {
+              final dg = _udpSocket?.receive();
+              if (dg != null) {
+                _handleUdpPacket(dg);
+              }
             }
-          }
-        });
+          },
+          onError: (e) {
+            // Ignore socket level errors safely
+          },
+          cancelOnError: false,
+        );
 
-        // Send discovery ping immediately and repeat after 600ms
+        // Send discovery ping immediately and repeat after 3s
         _sendUdpDiscoveryPing();
         _udpPeriodicPingTimer = Timer.periodic(const Duration(milliseconds: 3000), (_) {
           if (_activeHost == null || !_activeHost!.isOnline) {
@@ -176,12 +182,37 @@ class DiscoveryService extends ChangeNotifier {
     }
   }
 
-  void _sendUdpDiscoveryPing() {
+  Future<void> _sendUdpDiscoveryPing() async {
     if (_udpSocket == null) return;
     try {
       final data = utf8.encode('SAM_CONNECTED_DISCOVER');
-      // Broadcast to universal broadcast and common subnet masks
-      _udpSocket?.send(data, InternetAddress('255.255.255.255'), 8088);
+      final broadcastIps = <String>{'192.168.1.255', '192.168.0.255'};
+
+      try {
+        final interfaces = await NetworkInterface.list(
+          includeLoopback: false,
+          type: InternetAddressType.IPv4,
+        );
+        for (final iface in interfaces) {
+          for (final addr in iface.addresses) {
+            final parts = addr.address.split('.');
+            if (parts.length == 4) {
+              broadcastIps.add('${parts[0]}.${parts[1]}.${parts[2]}.255');
+            }
+          }
+        }
+      } catch (_) {}
+
+      for (final ip in broadcastIps) {
+        try {
+          _udpSocket?.send(data, InternetAddress(ip), 8088);
+        } catch (_) {}
+      }
+
+      // Also attempt universal broadcast safely
+      try {
+        _udpSocket?.send(data, InternetAddress('255.255.255.255'), 8088);
+      } catch (_) {}
     } catch (_) {}
   }
 
