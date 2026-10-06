@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
+import '../../core/platform/background_task_manager.dart';
 import '../../core/utils/device_identity.dart';
 import 'gallery_scanner_service.dart';
 
@@ -107,6 +108,8 @@ class SyncCoordinator extends ChangeNotifier {
       logs: _state.logs,
     );
     notifyListeners();
+
+    await BackgroundTaskManager.beginBackgroundTask();
 
     try {
       final hasPermission = await scannerService.requestPermission();
@@ -295,6 +298,8 @@ class SyncCoordinator extends ChangeNotifier {
         statusMessage: 'Error: $e',
       );
       notifyListeners();
+    } finally {
+      await BackgroundTaskManager.endBackgroundTask();
     }
   }
 }

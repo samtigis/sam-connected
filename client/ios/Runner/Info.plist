@@ -41,6 +41,16 @@
 	<string>Aplikasi membutuhkan izin untuk menyimpan status pencadangan.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Aplikasi membutuhkan akses foto dan video untuk auto-backup ke Host Storage lokal.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.samtigis.client.refresh</string>
+		<string>com.samtigis.client.processing</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
