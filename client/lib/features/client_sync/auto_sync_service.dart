@@ -135,22 +135,24 @@ class AutoSyncService extends ChangeNotifier {
   }
 
   /// Listens to iOS & Android native photo library changes in real-time (PhotoKit)
-  void startPhotoChangeObserver() {
+  Future<void> startPhotoChangeObserver() async {
     if (_isObservingPhotos) return;
     try {
+      final state = await PhotoManager.requestPermissionExtend();
+      if (!state.isAuth && !state.hasAccess) return;
       PhotoManager.addChangeCallback(_onPhotoLibraryChange);
-      PhotoManager.startChangeNotify();
+      await PhotoManager.startChangeNotify();
       _isObservingPhotos = true;
     } catch (e) {
       if (kDebugMode) print('Failed to start PhotoManager change notify: $e');
     }
   }
 
-  void stopPhotoChangeObserver() {
+  Future<void> stopPhotoChangeObserver() async {
     if (!_isObservingPhotos) return;
     try {
       PhotoManager.removeChangeCallback(_onPhotoLibraryChange);
-      PhotoManager.stopChangeNotify();
+      await PhotoManager.stopChangeNotify();
     } catch (_) {}
     _changeDebounceTimer?.cancel();
     _isObservingPhotos = false;
