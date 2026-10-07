@@ -73,7 +73,13 @@ func (s *ThumbnailService) GenerateThumbnail(srcPath, destPath string) (*ImageMe
 	// Decode source image using imaging (supports AutoOrientation, JPEG, PNG, GIF, BMP, TIFF)
 	srcImg, err := imaging.Open(srcPath, imaging.AutoOrientation(true))
 	if err != nil {
-		return nil, fmt.Errorf("imaging.Open failed (possibly unsupported format or video): %w", err)
+		// Fallback for formats like HEIC/HEIF or RAW using ffmpeg if available
+		if ffmpegErr := s.GenerateVideoThumbnail(srcPath, destPath); ffmpegErr == nil {
+			return &ImageMeta{
+				TakenAt: takenAt,
+			}, nil
+		}
+		return nil, fmt.Errorf("imaging.Open and ffmpeg fallback failed: %w", err)
 	}
 
 	bounds := srcImg.Bounds()

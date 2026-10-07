@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
@@ -242,6 +243,20 @@ class SyncCoordinator extends ChangeNotifier {
         );
         notifyListeners();
 
+        File? thumbFile;
+        try {
+          final thumbBytes = await item.entity.thumbnailDataWithSize(
+            const ThumbnailSize(500, 500),
+            quality: 85,
+          );
+          if (thumbBytes != null && thumbBytes.isNotEmpty) {
+            final tempDir = await getTemporaryDirectory();
+            final tFile = File('${tempDir.path}/thumb_${item.hash}.jpg');
+            await tFile.writeAsBytes(thumbBytes);
+            thumbFile = tFile;
+          }
+        } catch (_) {}
+
         try {
           final uploadRes = await apiClient.upload(
             file: item.file,
@@ -253,6 +268,7 @@ class SyncCoordinator extends ChangeNotifier {
             duration: item.entity.type == AssetType.video && item.entity.duration > 0
                 ? item.entity.duration.toDouble()
                 : null,
+            thumbnailFile: thumbFile,
             onSendProgress: (sent, total) {
               if (total > 0) {
                 final double p = sent / total;
@@ -281,6 +297,12 @@ class SyncCoordinator extends ChangeNotifier {
           await localDb.markFailed(item.entity.id, e.toString());
           _state = _state.copyWith(errorCount: errors);
           notifyListeners();
+        } finally {
+          if (thumbFile != null && await thumbFile.exists()) {
+            try {
+              await thumbFile.delete();
+            } catch (_) {}
+          }
         }
       }
 
