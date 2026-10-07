@@ -4,7 +4,6 @@ import BackgroundTasks
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
-  let flutterEngine = FlutterEngine(name: "shared_flutter_engine")
   private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
   private let refreshTaskIdentifier = "com.samtigis.client.refresh"
 
@@ -12,12 +11,28 @@ import BackgroundTasks
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    flutterEngine.run()
-    GeneratedPluginRegistrant.register(with: flutterEngine)
+    GeneratedPluginRegistrant.register(with: self)
 
+    let controller = window?.rootViewController as? FlutterViewController
+    if let messenger = controller?.binaryMessenger {
+      setupChannels(messenger: messenger)
+    }
+
+    if #available(iOS 13.0, *) {
+      BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshTaskIdentifier, using: nil) { [weak self] task in
+        if let refreshTask = task as? BGAppRefreshTask {
+          self?.handleAppRefresh(task: refreshTask)
+        }
+      }
+    }
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func setupChannels(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
       name: "com.samtigis.client/background_task",
-      binaryMessenger: flutterEngine.binaryMessenger
+      binaryMessenger: messenger
     )
 
     channel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
@@ -51,26 +66,16 @@ import BackgroundTasks
         result(FlutterMethodNotImplemented)
       }
     }
-
-    if #available(iOS 13.0, *) {
-      BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshTaskIdentifier, using: nil) { [weak self] task in
-        if let refreshTask = task as? BGAppRefreshTask {
-          self?.handleAppRefresh(task: refreshTask)
-        }
-      }
-    }
-
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   @available(iOS 13.0, *)
   func scheduleAppRefresh() {
     let request = BGAppRefreshTaskRequest(identifier: refreshTaskIdentifier)
-    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 mins
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
     do {
       try BGTaskScheduler.shared.submit(request)
     } catch {
-      print("[BGTask] Error scheduling BGAppRefresh: \(error)")
+      print("[BGTask] Error: \(error)")
     }
   }
 
@@ -78,14 +83,17 @@ import BackgroundTasks
   private func handleAppRefresh(task: BGAppRefreshTask) {
     scheduleAppRefresh()
 
+    guard let controller = window?.rootViewController as? FlutterViewController else {
+      task.setTaskCompleted(success: false)
+      return
+    }
+
     let channel = FlutterMethodChannel(
       name: "com.samtigis.client/background_task",
-      binaryMessenger: flutterEngine.binaryMessenger
+      binaryMessenger: controller.binaryMessenger
     )
 
-    task.expirationHandler = {
-      // Clean up if task expires
-    }
+    task.expirationHandler = {}
 
     channel.invokeMethod("onBackgroundRefresh", arguments: nil) { _ in
       task.setTaskCompleted(success: true)
@@ -98,21 +106,4 @@ import BackgroundTasks
       scheduleAppRefresh()
     }
   }
-
-  // MARK: - UISceneSession Lifecycle
-  override func application(
-    _ application: UIApplication,
-    configurationForConnecting connectingSceneSession: UISceneSession,
-    options: UIScene.ConnectionOptions
-  ) -> UISceneConfiguration {
-    return UISceneConfiguration(
-      name: "Default Configuration",
-      sessionRole: connectingSceneSession.role
-    )
-  }
-
-  override func application(
-    _ application: UIApplication,
-    didDiscardSceneSessions sceneSessions: Set<UISceneSession>
-  ) {}
 }

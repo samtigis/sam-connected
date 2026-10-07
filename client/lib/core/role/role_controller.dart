@@ -45,7 +45,11 @@ class RoleController extends ChangeNotifier {
     } else if (roleString == 'clientUploader') {
       _currentRole = AppRole.clientUploader;
     } else {
-      _currentRole = AppRole.unselected;
+      if (!isDesktopPlatform) {
+        _currentRole = AppRole.clientUploader;
+      } else {
+        _currentRole = AppRole.unselected;
+      }
     }
 
     _storagePath = prefs.getString(_storagePathKey) ?? '';
