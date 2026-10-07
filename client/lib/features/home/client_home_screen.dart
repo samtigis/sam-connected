@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/discovery_service.dart';
+import '../../core/platform/background_task_manager.dart';
 import '../client_sync/auto_sync_service.dart';
 import '../client_sync/client_sync_screen.dart';
 import '../client_sync/gallery_scanner_service.dart';
@@ -49,6 +50,14 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     _autoSyncService = AutoSyncService(_syncCoordinator);
     _galleryController = GalleryController(_apiClient);
 
+    // Initialize iOS Native BGAppRefreshTask listener
+    BackgroundTaskManager.initialize(onRefresh: () async {
+      await _autoSyncService.triggerAutoSync(reason: 'iOS Background Refresh');
+    });
+
+    // Start real-time PhotoKit change observer (detects new photos/videos like iCloud / Google Photos)
+    _autoSyncService.startPhotoChangeObserver();
+
     // Listen to mDNS server discovery updates
     _discoveryService.addListener(_onDiscoveryUpdate);
     _discoveryService.startDiscovery();
@@ -71,8 +80,12 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
 
   void _onDiscoveryUpdate() {
     final active = _discoveryService.activeHost;
-    if (active != null && active.baseUrl != _currentServerUrl) {
-      _updateServerUrl(active.baseUrl);
+    if (active != null) {
+      if (active.baseUrl != _currentServerUrl) {
+        _updateServerUrl(active.baseUrl);
+      }
+      // Auto-trigger sync when server host is detected on Wi-Fi network
+      _autoSyncService.onServerDiscovered();
     }
   }
 
@@ -99,6 +112,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     _discoveryService.removeListener(_onDiscoveryUpdate);
     _discoveryService.dispose();
     _syncCoordinator.removeListener(_onSyncCoordinatorUpdate);
+    _autoSyncService.stopPhotoChangeObserver();
     _autoSyncService.dispose();
     _syncCoordinator.dispose();
     super.dispose();

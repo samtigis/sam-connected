@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'sync_coordinator.dart';
 
@@ -13,6 +15,8 @@ class AutoSyncService extends ChangeNotifier {
 
   final SyncCoordinator _syncCoordinator;
   Timer? _periodicTimer;
+  Timer? _changeDebounceTimer;
+  bool _isObservingPhotos = false;
 
   bool _autoSyncEnabled = true;
   bool _syncOnAppOpen = true;
@@ -130,9 +134,49 @@ class AutoSyncService extends ChangeNotifier {
     }
   }
 
+  /// Listens to iOS & Android native photo library changes in real-time (PhotoKit)
+  void startPhotoChangeObserver() {
+    if (_isObservingPhotos) return;
+    try {
+      PhotoManager.addChangeCallback(_onPhotoLibraryChange);
+      PhotoManager.startChangeNotify();
+      _isObservingPhotos = true;
+    } catch (e) {
+      if (kDebugMode) print('Failed to start PhotoManager change notify: $e');
+    }
+  }
+
+  void stopPhotoChangeObserver() {
+    if (!_isObservingPhotos) return;
+    try {
+      PhotoManager.removeChangeCallback(_onPhotoLibraryChange);
+      PhotoManager.stopChangeNotify();
+    } catch (_) {}
+    _changeDebounceTimer?.cancel();
+    _isObservingPhotos = false;
+  }
+
+  void _onPhotoLibraryChange(MethodCall call) {
+    if (!_autoSyncEnabled) return;
+    // Debounce 4 seconds so camera app finishes saving the photo/video file
+    _changeDebounceTimer?.cancel();
+    _changeDebounceTimer = Timer(const Duration(seconds: 4), () {
+      triggerAutoSync(reason: 'Deteksi Media Baru di Galeri (PhotoKit Live)');
+    });
+  }
+
+  /// Invoked when server is discovered on local Wi-Fi network
+  void onServerDiscovered() {
+    if (_autoSyncEnabled && !_isAutoSyncRunning && !_syncCoordinator.state.isSyncing) {
+      triggerAutoSync(reason: 'Server Terdeteksi di Jaringan Wi-Fi');
+    }
+  }
+
   @override
   void dispose() {
     _periodicTimer?.cancel();
+    _changeDebounceTimer?.cancel();
+    stopPhotoChangeObserver();
     super.dispose();
   }
 }

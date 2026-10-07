@@ -28,5 +28,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) {}
     func sceneWillResignActive(_ scene: UIScene) {}
     func sceneWillEnterForeground(_ scene: UIScene) {}
-    func sceneDidEnterBackground(_ scene: UIScene) {}
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        if #available(iOS 13.0, *) {
+            (UIApplication.shared.delegate as? AppDelegate)?.scheduleAppRefresh()
+        }
+    }
 }

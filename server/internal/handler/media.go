@@ -491,6 +491,12 @@ func (h *MediaHandler) GetRaw(c *fiber.Ctx) error {
 // GetDevices returns all distinct client devices that have backed up media to the server, including custom friendly names.
 // GET /api/v1/devices
 func (h *MediaHandler) GetDevices(c *fiber.Ctx) error {
+	type Row struct {
+		DeviceID   string `json:"device_id"`
+		TotalMedia int    `json:"total_media"`
+		TotalBytes int64  `json:"total_bytes"`
+		LastActive string `json:"last_active"`
+	}
 	type Result struct {
 		DeviceID    string     `json:"device_id"`
 		CustomName  string     `json:"custom_name"`
@@ -499,12 +505,13 @@ func (h *MediaHandler) GetDevices(c *fiber.Ctx) error {
 		TotalBytes  int64      `json:"total_bytes"`
 		LastActive  *time.Time `json:"last_active"`
 	}
-	var results []Result
+
+	var rows []Row
 	err := h.DB.Model(&database.Media{}).
-		Select("device_id, count(*) as total_media, sum(file_size) as total_bytes, max(created_at) as last_active").
+		Select("device_id, count(*) as total_media, COALESCE(sum(file_size), 0) as total_bytes, COALESCE(max(created_at), '') as last_active").
 		Group("device_id").
 		Order("last_active desc").
-		Scan(&results).Error
+		Scan(&rows).Error
 
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -520,13 +527,60 @@ func (h *MediaHandler) GetDevices(c *fiber.Ctx) error {
 		nameMap[d.DeviceID] = d.CustomName
 	}
 
-	for i := range results {
-		cName := nameMap[results[i].DeviceID]
-		results[i].CustomName = cName
+	results := make([]Result, 0, len(rows))
+	seenDevices := make(map[string]bool)
+
+	for _, r := range rows {
+		seenDevices[r.DeviceID] = true
+		cName := nameMap[r.DeviceID]
+		dispName := r.DeviceID
 		if cName != "" {
-			results[i].DisplayName = cName
-		} else {
-			results[i].DisplayName = results[i].DeviceID
+			dispName = cName
+		}
+
+		var activeTime *time.Time
+		if r.LastActive != "" {
+			for _, layout := range []string{
+				time.RFC3339Nano,
+				time.RFC3339,
+				"2006-01-02 15:04:05.999999999-07:00",
+				"2006-01-02 15:04:05-07:00",
+				"2006-01-02 15:04:05",
+				"2006-01-02T15:04:05",
+			} {
+				if t, err := time.Parse(layout, r.LastActive); err == nil {
+					activeTime = &t
+					break
+				}
+			}
+		}
+
+		results = append(results, Result{
+			DeviceID:    r.DeviceID,
+			CustomName:  cName,
+			DisplayName: dispName,
+			TotalMedia:  r.TotalMedia,
+			TotalBytes:  r.TotalBytes,
+			LastActive:  activeTime,
+		})
+	}
+
+	// Also include devices that have been named/registered but have not uploaded media yet
+	for _, d := range devRecords {
+		if !seenDevices[d.DeviceID] {
+			dispName := d.DeviceID
+			if d.CustomName != "" {
+				dispName = d.CustomName
+			}
+			lastAct := d.LastActive
+			results = append(results, Result{
+				DeviceID:    d.DeviceID,
+				CustomName:  d.CustomName,
+				DisplayName: dispName,
+				TotalMedia:  0,
+				TotalBytes:  0,
+				LastActive:  &lastAct,
+			})
 		}
 	}
 
