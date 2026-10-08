@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/gallery_media_item.dart';
@@ -82,6 +83,41 @@ class GalleryController extends ChangeNotifier {
     if (_viewMode == GalleryViewMode.server) {
       _fetchServerGallery();
     }
+  }
+
+  /// Get friendly display name of a device (e.g. "iPad Pro Sam", "iPhone 15")
+  String getDeviceFriendlyName(String? deviceId) {
+    if (deviceId == null || deviceId.isEmpty) return 'Perangkat Lain';
+    for (final dev in _serverDevices) {
+      if (dev['device_id']?.toString() == deviceId) {
+        final customName = dev['custom_name']?.toString().trim();
+        if (customName != null && customName.isNotEmpty) return customName;
+        final dispName = dev['display_name']?.toString().trim();
+        if (dispName != null && dispName.isNotEmpty) return dispName;
+      }
+    }
+    final lower = deviceId.toLowerCase();
+    if (lower.contains('ipad')) {
+      return deviceId.replaceAll('_', ' ').replaceAll('-', ' ');
+    } else if (lower.contains('iphone')) {
+      return deviceId.replaceAll('_', ' ').replaceAll('-', ' ');
+    }
+    return deviceId.replaceAll('_', ' ');
+  }
+
+  /// Rename / assign friendly custom name to a device on the server
+  Future<bool> setDeviceFriendlyName(String deviceId, String name) async {
+    final ok = await _apiClient.setDeviceName(deviceId, name);
+    if (ok) {
+      for (final dev in _serverDevices) {
+        if (dev['device_id']?.toString() == deviceId) {
+          dev['custom_name'] = name;
+          dev['display_name'] = name;
+        }
+      }
+      notifyListeners();
+    }
+    return ok;
   }
 
   void setViewMode(GalleryViewMode mode) {
@@ -457,6 +493,127 @@ class GalleryController extends ChangeNotifier {
       onProgress?.call(i + 1, total, item.title);
 
       final ok = await backupSingleAsset(item);
+      if (ok) {
+        successCount++;
+      }
+    }
+
+    return successCount;
+  }
+
+  /// Pulls a photo or video directly from the server into the native device gallery (Photos / MediaStore)
+  /// with 100% original quality, zero re-compression, at line speed.
+  Future<bool> pullMediaToGallery(
+    GalleryMediaItem item, {
+    void Function(double progress)? onProgress,
+  }) async {
+    if (item.serverItem == null) return false;
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final fileName = item.serverItem!.fileName;
+      final tempFilePath = '${tempDir.path}/pull_${DateTime.now().millisecondsSinceEpoch}_$fileName';
+
+      // Fast streaming download directly to disk (raw wire speed, identity encoding avoids gzip CPU overhead)
+      await _apiClient.downloadMediaRaw(
+        mediaId: item.serverItem!.id,
+        savePath: tempFilePath,
+        onReceiveProgress: (received, total) {
+          if (total > 0 && onProgress != null) {
+            onProgress(received / total);
+          }
+        },
+      );
+
+      final tempFile = File(tempFilePath);
+      if (!await tempFile.exists()) return false;
+
+      // Save to native gallery without re-encoding
+      final AssetEntity newEntity;
+      if (item.isVideo) {
+        newEntity = await PhotoManager.editor.saveVideo(
+          tempFile,
+          title: item.title,
+          creationDate: item.createDateTime,
+        );
+      } else {
+        newEntity = await PhotoManager.editor.saveImageWithPath(
+          tempFilePath,
+          title: item.title,
+          creationDate: item.createDateTime,
+        );
+      }
+
+      // Delete the temporary file
+      try {
+        await tempFile.delete();
+      } catch (_) {}
+
+      // Record in local database so it is recognized as synced locally
+      final hash = item.hash ?? '';
+      if (hash.isNotEmpty) {
+        await _localDb.markSynced(hash, item.serverItem!.id);
+      }
+      await _localDb.markSyncedByAssetId(
+        newEntity.id,
+        serverId: item.serverItem!.id,
+        hash: hash,
+      );
+
+      // Update in-memory item state so it is marked as local and grey exclamation mark disappears
+      _updateItemAfterPull(item, newEntity);
+      return true;
+    } catch (e) {
+      debugPrint('[GalleryController] pullMediaToGallery error: $e');
+      return false;
+    }
+  }
+
+  void _updateItemAfterPull(GalleryMediaItem originalItem, AssetEntity? entity) {
+    final idx = _serverMedia.indexWhere((m) => m.id == originalItem.id);
+    if (idx != -1) {
+      _serverMedia[idx] = _serverMedia[idx].copyWith(
+        localEntity: entity,
+        isSynced: true,
+      );
+      _rebuildServerTimeline();
+    }
+
+    if (entity != null) {
+      final dIdx = _deviceMedia.indexWhere((m) => m.id == entity.id);
+      if (dIdx == -1) {
+        final newDevItem = GalleryMediaItem.fromAssetEntity(
+          entity,
+          isSynced: true,
+          hash: originalItem.hash,
+        );
+        _deviceMedia.insert(0, newDevItem);
+        _deviceTotalCount = _deviceMedia.length;
+        _deviceSyncedCount++;
+        _rebuildDeviceTimeline();
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Pull a batch of selected items missing locally to native gallery
+  Future<int> pullBatchToGallery(
+    List<GalleryMediaItem> items, {
+    void Function(int current, int total, String title)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    final toPull = items.where((i) => i.localEntity == null && i.serverItem != null).toList();
+    if (toPull.isEmpty) return 0;
+
+    int successCount = 0;
+    final total = toPull.length;
+
+    for (int i = 0; i < total; i++) {
+      if (isCancelled != null && isCancelled()) break;
+      final item = toPull[i];
+      onProgress?.call(i + 1, total, item.title);
+
+      final ok = await pullMediaToGallery(item);
       if (ok) {
         successCount++;
       }

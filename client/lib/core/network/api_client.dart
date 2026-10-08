@@ -238,6 +238,42 @@ class ApiClient {
     final response = await _dio.delete('/media/$id');
     return response.statusCode == 200;
   }
+
+  /// Download media raw stream directly to local file for fast zero-compression gallery pull
+  /// GET /api/v1/media/:id/raw
+  Future<void> downloadMediaRaw({
+    required int mediaId,
+    required String savePath,
+    ProgressCallback? onReceiveProgress,
+    CancelToken? cancelToken,
+  }) async {
+    await _dio.download(
+      '/media/$mediaId/raw',
+      savePath,
+      options: Options(
+        responseType: ResponseType.stream,
+        headers: {
+          'Accept-Encoding': 'identity', // avoid gzip overhead on media files
+        },
+      ),
+      onReceiveProgress: onReceiveProgress,
+      cancelToken: cancelToken,
+    );
+  }
+
+  /// Rename / assign friendly custom name to a device on the server
+  /// POST /api/v1/devices/:id/name
+  Future<bool> setDeviceName(String deviceId, String name) async {
+    try {
+      final response = await _dio.post(
+        '/devices/$deviceId/name',
+        data: {'name': name},
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 class ConnectionTestResult {

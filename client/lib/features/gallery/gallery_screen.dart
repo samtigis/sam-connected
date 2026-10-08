@@ -28,8 +28,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
 
-  // Batch backup state
+  // Batch backup & pull state
   bool _isBatchBackingUp = false;
+  bool _isBatchPulling = false;
   int _batchCurrent = 0;
   int _batchTotal = 0;
   String _batchCurrentTitle = '';
@@ -237,6 +238,442 @@ class _GalleryScreenState extends State<GalleryScreen> {
         );
       }
     }
+  }
+
+  Future<void> _startBatchPull(List<GalleryMediaItem> itemsToPull) async {
+    if (itemsToPull.isEmpty) return;
+
+    setState(() {
+      _isBatchPulling = true;
+      _batchCurrent = 0;
+      _batchTotal = itemsToPull.length;
+      _batchCurrentTitle = '';
+      _cancelBatchRequested = false;
+    });
+
+    bool dialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final progress = _batchTotal > 0 ? (_batchCurrent / _batchTotal) : 0.0;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.download_rounded, color: Color(0xFF2563EB)),
+                SizedBox(width: 10),
+                Text('Menarik Media ke Galeri', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    color: const Color(0xFF2563EB),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '$_batchCurrent dari $_batchTotal media',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    Text(
+                      '${(progress * 100).toInt()}%',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF2563EB)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _batchCurrentTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _cancelBatchRequested = true;
+                  if (dialogOpen) {
+                    dialogOpen = false;
+                    Navigator.of(dlgCtx).pop();
+                  }
+                },
+                child: const Text('Batal'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).then((_) {
+      dialogOpen = false;
+    });
+
+    int successCount = 0;
+    try {
+      successCount = await widget.controller.pullBatchToGallery(
+        itemsToPull,
+        onProgress: (current, total, title) {
+          if (mounted) {
+            setState(() {
+              _batchCurrent = current;
+              _batchTotal = total;
+              _batchCurrentTitle = title;
+            });
+          }
+        },
+        isCancelled: () => _cancelBatchRequested,
+      );
+    } finally {
+      if (dialogOpen && mounted) {
+        dialogOpen = false;
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (mounted) {
+        setState(() {
+          _isBatchPulling = false;
+          _isSelectionMode = false;
+          _selectedIds.clear();
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Selesai! $successCount dari ${itemsToPull.length} media berhasil ditarik ke galeri perangkat tanpa kompresi.',
+            ),
+            backgroundColor: const Color(0xFF16A34A),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showMissingLocallyInfo(BuildContext context, GalleryMediaItem item) {
+    final ctrl = widget.controller;
+    final deviceId = item.serverItem?.deviceId ?? '';
+    final deviceName = ctrl.getDeviceFriendlyName(deviceId);
+
+    IconData devIcon = Icons.devices_rounded;
+    final lower = (deviceId + deviceName).toLowerCase();
+    if (lower.contains('ipad')) {
+      devIcon = Icons.tablet_mac_rounded;
+    } else if (lower.contains('iphone')) {
+      devIcon = Icons.phone_iphone_rounded;
+    } else if (lower.contains('android')) {
+      devIcon = Icons.android_rounded;
+    } else if (lower.contains('pc') || lower.contains('laptop') || lower.contains('windows')) {
+      devIcon = Icons.laptop_windows_rounded;
+    }
+
+    bool isPulling = false;
+    double pullProgress = 0.0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final theme = Theme.of(context);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.priority_high_rounded,
+                          size: 20,
+                          color: Color(0xFF4B5563),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Belum Ada di Galeri Perangkat',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'File aman di server, siap ditarik ke galeri ini',
+                              style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Owner device card with rename option
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(devIcon, size: 28, color: theme.colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Perangkat Asal Pencadangan',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.outline,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                deviceName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Ubah Nama Perangkat',
+                          icon: const Icon(Icons.edit_rounded, size: 18),
+                          onPressed: () {
+                            _showRenameDeviceDialog(context, deviceId, deviceName);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Media Details
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildDetailRow(context, 'Nama File', item.title),
+                        const SizedBox(height: 6),
+                        _buildDetailRow(
+                          context,
+                          'Tipe & Ukuran',
+                          '${item.isVideo ? "Video" : "Foto"} • ${item.formattedFileSize.isNotEmpty ? item.formattedFileSize : "-"}',
+                        ),
+                        const SizedBox(height: 6),
+                        _buildDetailRow(context, 'Tanggal', item.formattedDate),
+                        if (item.width > 0 && item.height > 0) ...[
+                          const SizedBox(height: 6),
+                          _buildDetailRow(context, 'Dimensi', '${item.width} × ${item.height}'),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  if (isPulling) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: pullProgress > 0 ? pullProgress : null,
+                        minHeight: 6,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Text(
+                        pullProgress > 0
+                            ? 'Menarik data... ${(pullProgress * 100).toInt()}%'
+                            : 'Mengunduh dan menyimpan ke galeri...',
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.download_rounded),
+                        label: const Text(
+                          'Tarik ke Galeri (Kualitas Asli 100%)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        onPressed: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          setSheetState(() {
+                            isPulling = true;
+                            pullProgress = 0.0;
+                          });
+
+                          final ok = await ctrl.pullMediaToGallery(
+                            item,
+                            onProgress: (p) {
+                              setSheetState(() {
+                                pullProgress = p;
+                              });
+                            },
+                          );
+
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  ok
+                                      ? 'Berhasil disimpan ke Galeri Foto perangkat! 🎉'
+                                      : 'Gagal menarik file dari server.',
+                                ),
+                                backgroundColor: ok ? const Color(0xFF16A34A) : Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showRenameDeviceDialog(BuildContext context, String deviceId, String currentName) {
+    final textCtrl = TextEditingController(text: currentName);
+    showDialog(
+      context: context,
+      builder: (dlgCtx) => AlertDialog(
+        title: const Text('Beri Nama Perangkat', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'ID: $deviceId',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: textCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Nama Perangkat (contoh: iPad Pro / iPhone 15)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dlgCtx),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final newName = textCtrl.text.trim();
+              if (newName.isNotEmpty) {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(dlgCtx);
+                await widget.controller.setDeviceFriendlyName(deviceId, newName);
+                if (mounted) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('Nama perangkat diperbarui menjadi "$newName"')),
+                  );
+                }
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: theme.colorScheme.outline)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -899,6 +1336,42 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 ),
               ),
             ),
+
+          // Missing locally badge on Server Gallery:
+          // "tanda seru abu abu kecil saja"
+          // Muncul jika media ada di server namun belum ada di galeri perangkat (atau sudah dihapus dari galeri)
+          if (ctrl.viewMode == GalleryViewMode.server && item.localEntity == null)
+            Positioned(
+              top: 5,
+              right: 5,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showMissingLocallyInfo(context, item),
+                child: Container(
+                  padding: const EdgeInsets.all(3.5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF9CA3AF).withOpacity(0.85),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.35),
+                        blurRadius: 3,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.priority_high_rounded,
+                    size: 11,
+                    color: Color(0xFFD1D5DB), // Light grey exclamation
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -911,6 +1384,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   ) {
     final selectedItems = visibleItems.where((i) => _selectedIds.contains(i.id)).toList();
     final unsyncedSelected = selectedItems.where((i) => !i.isSynced).toList();
+    final missingLocallySelected = selectedItems.where((i) => i.localEntity == null).toList();
     final isDevice = ctrl.viewMode == GalleryViewMode.device;
 
     return Container(
@@ -955,6 +1429,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           ? const Color(0xFFEA580C)
                           : theme.colorScheme.outline,
                     ),
+                  )
+                else
+                  Text(
+                    missingLocallySelected.isNotEmpty
+                        ? '${missingLocallySelected.length} belum ada di galeri lokal'
+                        : (_selectedIds.isNotEmpty ? 'Semua sudah ada di galeri lokal' : 'Ketuk media untuk memilih'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: missingLocallySelected.isNotEmpty
+                          ? const Color(0xFF4B5563)
+                          : theme.colorScheme.outline,
+                    ),
                   ),
               ],
             ),
@@ -979,6 +1465,29 @@ class _GalleryScreenState extends State<GalleryScreen> {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+            )
+          else if (!isDevice && missingLocallySelected.isNotEmpty)
+            FilledButton.icon(
+              onPressed: _isBatchPulling
+                  ? null
+                  : () => _startBatchPull(missingLocallySelected),
+              icon: _isBatchPulling
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.download_rounded, size: 18),
+              label: Text(
+                _isBatchPulling
+                    ? '($_batchCurrent/$_batchTotal)'
+                    : 'Tarik ke Galeri (${missingLocallySelected.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
             )

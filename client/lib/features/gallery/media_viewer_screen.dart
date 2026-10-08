@@ -27,6 +27,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   final TransformationController _transformController = TransformationController();
   TapDownDetails? _doubleTapDetails;
   bool _isBackingUpCurrent = false;
+  bool _isPullingCurrent = false;
 
   @override
   void initState() {
@@ -92,6 +93,52 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     }
   }
 
+  void _handlePullCurrent(GalleryMediaItem item) async {
+    if (_isPullingCurrent || item.localEntity != null) return;
+
+    setState(() {
+      _isPullingCurrent = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await widget.controller.pullMediaToGallery(item);
+
+    if (mounted) {
+      setState(() {
+        _isPullingCurrent = false;
+        if (success) {
+          final updated = widget.controller.allMedia.firstWhere(
+            (m) => m.id == item.id,
+            orElse: () => item,
+          );
+          widget.items[_currentIndex] = updated;
+        }
+      });
+
+      if (success) {
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF16A34A),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Berhasil menarik "${item.title}" ke galeri foto!')),
+              ],
+            ),
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.redAccent,
+            content: Text('Gagal menarik file dari server ke galeri.'),
+          ),
+        );
+      }
+    }
+  }
+
   void _showInfoSheet(BuildContext context, GalleryMediaItem item) {
     showModalBottomSheet(
       context: context,
@@ -125,10 +172,26 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                 ),
                 const Divider(),
                 _buildInfoRow(ctx, 'Nama File', item.title, Icons.description_rounded),
+                if (item.serverItem != null)
+                  _buildInfoRow(
+                    ctx,
+                    'Perangkat Asal Pencadangan',
+                    widget.controller.getDeviceFriendlyName(item.serverItem!.deviceId),
+                    Icons.devices_rounded,
+                  ),
                 _buildInfoRow(
                   ctx,
-                  'Status Cadangan',
-                  item.isSynced ? 'Sudah Tercadangkan di Server ✅' : 'Belum Tercadangkan ⚠️',
+                  'Galeri Perangkat Ini',
+                  item.localEntity != null
+                      ? 'Tersimpan di Galeri Perangkat ✅'
+                      : 'Belum Ada di Galeri (dapat ditarik) ⚠️',
+                  item.localEntity != null ? Icons.phone_iphone_rounded : Icons.phonelink_erase_rounded,
+                  highlightColor: item.localEntity != null ? const Color(0xFF16A34A) : const Color(0xFF6B7280),
+                ),
+                _buildInfoRow(
+                  ctx,
+                  'Status Server',
+                  item.isSynced ? 'Tersimpan Aman di Server ✅' : 'Belum Dicadangkan ⚠️',
                   item.isSynced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
                   highlightColor: item.isSynced ? const Color(0xFF16A34A) : const Color(0xFFEA580C),
                 ),
@@ -166,6 +229,19 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                       },
                       icon: const Icon(Icons.cloud_upload_rounded),
                       label: const Text('Cadangkan File Ini Sekarang'),
+                    ),
+                  ),
+                if (item.localEntity == null && item.serverItem != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _handlePullCurrent(item);
+                      },
+                      icon: const Icon(Icons.download_rounded),
+                      label: const Text('Tarik ke Galeri (Kualitas Asli 100%)'),
                     ),
                   ),
               ],
@@ -290,6 +366,28 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                           onPressed: () => _handleBackupCurrent(currentItem),
                         ),
             )
+          else if (currentItem.localEntity == null && currentItem.serverItem != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              child: _isPullingCurrent
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
+                      ),
+                    )
+                  : ActionChip(
+                      avatar: const Icon(Icons.download_rounded, size: 14, color: Colors.white),
+                      label: const Text(
+                        'Tarik ke Galeri',
+                        style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                      backgroundColor: const Color(0xFF2563EB),
+                      onPressed: () => _handlePullCurrent(currentItem),
+                    ),
+            )
           else if (currentItem.serverItem != null && currentItem.serverItem!.deviceId.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -306,7 +404,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                     const Icon(Icons.devices_rounded, color: Colors.lightBlueAccent, size: 13),
                     const SizedBox(width: 4),
                     Text(
-                      currentItem.serverItem!.deviceId.replaceAll('_', ' '),
+                      widget.controller.getDeviceFriendlyName(currentItem.serverItem!.deviceId),
                       style: const TextStyle(color: Colors.lightBlueAccent, fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   ],
