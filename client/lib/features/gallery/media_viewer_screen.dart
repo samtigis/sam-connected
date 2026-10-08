@@ -28,6 +28,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
   TapDownDetails? _doubleTapDetails;
   bool _isBackingUpCurrent = false;
   bool _isPullingCurrent = false;
+  double _pullCurrentProgress = 0.0;
 
   @override
   void initState() {
@@ -98,10 +99,20 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
 
     setState(() {
       _isPullingCurrent = true;
+      _pullCurrentProgress = 0.0;
     });
 
     final messenger = ScaffoldMessenger.of(context);
-    final success = await widget.controller.pullMediaToGallery(item);
+    final success = await widget.controller.pullMediaToGallery(
+      item,
+      onProgress: (p) {
+        if (mounted) {
+          setState(() {
+            _pullCurrentProgress = p;
+          });
+        }
+      },
+    );
 
     if (mounted) {
       setState(() {
@@ -235,13 +246,19 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                      ),
                       onPressed: () {
                         Navigator.pop(ctx);
                         _handlePullCurrent(item);
                       },
-                      icon: const Icon(Icons.download_rounded),
-                      label: const Text('Tarik ke Galeri (Kualitas Asli 100%)'),
+                      icon: const Icon(Icons.download_rounded, color: Colors.white),
+                      label: const Text(
+                        'Tarik ke Galeri (Kualitas Asli 100%)',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
                     ),
                   ),
               ],
@@ -370,12 +387,31 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               child: _isPullingCurrent
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 10),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2563EB).withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF2563EB)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${(_pullCurrentProgress * 100).clamp(0, 100).toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : ActionChip(
@@ -508,6 +544,45 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
           );
         },
       ),
+      bottomNavigationBar: _isPullingCurrent
+          ? Container(
+              color: Colors.black.withOpacity(0.92),
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 12,
+                bottom: MediaQuery.of(context).padding.bottom + 10,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Menarik file ke galeri (kualitas asli 100%)...',
+                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${(_pullCurrentProgress * 100).clamp(0, 100).toInt()}%',
+                        style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _pullCurrentProgress > 0 ? _pullCurrentProgress : null,
+                      minHeight: 6,
+                      backgroundColor: Colors.white24,
+                      color: const Color(0xFF2563EB),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : null,
     );
   }
 }

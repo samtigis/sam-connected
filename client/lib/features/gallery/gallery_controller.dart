@@ -599,7 +599,7 @@ class GalleryController extends ChangeNotifier {
   /// Pull a batch of selected items missing locally to native gallery
   Future<int> pullBatchToGallery(
     List<GalleryMediaItem> items, {
-    void Function(int current, int total, String title)? onProgress,
+    void Function(int current, int total, String title, double itemProgress)? onProgress,
     bool Function()? isCancelled,
   }) async {
     final toPull = items.where((i) => i.localEntity == null && i.serverItem != null).toList();
@@ -611,9 +611,14 @@ class GalleryController extends ChangeNotifier {
     for (int i = 0; i < total; i++) {
       if (isCancelled != null && isCancelled()) break;
       final item = toPull[i];
-      onProgress?.call(i + 1, total, item.title);
+      onProgress?.call(i + 1, total, item.title, 0.0);
 
-      final ok = await pullMediaToGallery(item);
+      final ok = await pullMediaToGallery(
+        item,
+        onProgress: (itemP) {
+          onProgress?.call(i + 1, total, item.title, itemP);
+        },
+      );
       if (ok) {
         successCount++;
       }

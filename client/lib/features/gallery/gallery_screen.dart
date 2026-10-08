@@ -243,21 +243,25 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Future<void> _startBatchPull(List<GalleryMediaItem> itemsToPull) async {
     if (itemsToPull.isEmpty) return;
 
-    setState(() {
-      _isBatchPulling = true;
-      _batchCurrent = 0;
-      _batchTotal = itemsToPull.length;
-      _batchCurrentTitle = '';
-      _cancelBatchRequested = false;
-    });
+    int batchCurrent = 1;
+    final int batchTotal = itemsToPull.length;
+    String batchCurrentTitle = itemsToPull.first.title;
+    double batchItemProgress = 0.0;
+    double batchOverallProgress = 0.0;
+    bool cancelRequested = false;
 
+    StateSetter? dialogSetState;
     bool dialogOpen = true;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dlgCtx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final progress = _batchTotal > 0 ? (_batchCurrent / _batchTotal) : 0.0;
+          dialogSetState = setDialogState;
+          final pct = (batchOverallProgress * 100).clamp(0, 100).toInt();
+          final itemPct = (batchItemProgress * 100).clamp(0, 100).toInt();
+
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: const Row(
@@ -271,41 +275,67 @@ class _GalleryScreenState extends State<GalleryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    color: const Color(0xFF2563EB),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                // Total Progress Header & Bar
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '$_batchCurrent dari $_batchTotal media',
+                      '$batchCurrent dari $batchTotal media',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     Text(
-                      '${(progress * 100).toInt()}%',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF2563EB)),
+                      '$pct%',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF2563EB)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: batchOverallProgress > 0 ? batchOverallProgress : null,
+                    minHeight: 8,
+                    backgroundColor: Colors.blue.withOpacity(0.15),
+                    color: const Color(0xFF2563EB),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Current Item Progress Header & Bar
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        batchCurrentTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$itemPct%',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  _batchCurrentTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: batchItemProgress > 0 ? batchItemProgress : null,
+                    minHeight: 5,
+                    backgroundColor: Colors.grey.withOpacity(0.2),
+                    color: const Color(0xFF60A5FA),
+                  ),
                 ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () {
-                  _cancelBatchRequested = true;
+                  cancelRequested = true;
                   if (dialogOpen) {
                     dialogOpen = false;
                     Navigator.of(dlgCtx).pop();
@@ -319,22 +349,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
       ),
     ).then((_) {
       dialogOpen = false;
+      dialogSetState = null;
     });
 
     int successCount = 0;
     try {
       successCount = await widget.controller.pullBatchToGallery(
         itemsToPull,
-        onProgress: (current, total, title) {
-          if (mounted) {
-            setState(() {
-              _batchCurrent = current;
-              _batchTotal = total;
-              _batchCurrentTitle = title;
-            });
+        onProgress: (current, total, title, itemP) {
+          batchCurrent = current;
+          batchCurrentTitle = title;
+          batchItemProgress = itemP;
+          batchOverallProgress = total > 0 ? (((current - 1) + itemP) / total) : 0.0;
+          if (dialogSetState != null) {
+            dialogSetState!(() {});
           }
         },
-        isCancelled: () => _cancelBatchRequested,
+        isCancelled: () => cancelRequested,
       );
     } finally {
       if (dialogOpen && mounted) {
@@ -529,20 +560,83 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   const SizedBox(height: 16),
 
                   if (isPulling) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: pullProgress > 0 ? pullProgress : null,
-                        minHeight: 6,
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.35)),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Center(
-                      child: Text(
-                        pullProgress > 0
-                            ? 'Menarik data... ${(pullProgress * 100).toInt()}%'
-                            : 'Mengunduh dan menyimpan ke galeri...',
-                        style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Mengunduh Kualitas Asli 100%...',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '${(pullProgress * 100).clamp(0, 100).toInt()}%',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF2563EB),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LinearProgressIndicator(
+                              value: pullProgress > 0 ? pullProgress : null,
+                              minHeight: 8,
+                              backgroundColor: Colors.blue.withOpacity(0.15),
+                              color: const Color(0xFF2563EB),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 11, color: theme.colorScheme.outline),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (item.formattedFileSize.isNotEmpty)
+                                Text(
+                                  pullProgress > 0
+                                      ? '${(pullProgress * item.fileSize / (1024 * 1024)).toStringAsFixed(1)} MB / ${item.formattedFileSize}'
+                                      : item.formattedFileSize,
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: theme.colorScheme.outline),
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -553,12 +647,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        icon: const Icon(Icons.download_rounded),
+                        icon: const Icon(Icons.download_rounded, color: Colors.white),
                         label: const Text(
                           'Tarik ke Galeri (Kualitas Asli 100%)',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
                         ),
                         onPressed: () async {
                           final messenger = ScaffoldMessenger.of(context);
@@ -1479,15 +1574,16 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Icon(Icons.download_rounded, size: 18),
+                  : const Icon(Icons.download_rounded, size: 18, color: Colors.white),
               label: Text(
                 _isBatchPulling
                     ? '($_batchCurrent/$_batchTotal)'
                     : 'Tarik ke Galeri (${missingLocallySelected.length})',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
             )
