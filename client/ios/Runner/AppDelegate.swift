@@ -7,6 +7,7 @@ import BackgroundTasks
   let flutterEngine = FlutterEngine(name: "shared_flutter_engine")
   private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
   private let refreshTaskIdentifier = "com.samtigis.client.refresh"
+  private let processingTaskIdentifier = "com.samtigis.client.processing"
 
   override func application(
     _ application: UIApplication,
@@ -47,6 +48,14 @@ import BackgroundTasks
         }
         result(true)
 
+      case "setIdleTimerDisabled":
+        if let disabled = call.arguments as? Bool {
+          UIApplication.shared.isIdleTimerDisabled = disabled
+          result(true)
+        } else {
+          result(false)
+        }
+
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -58,9 +67,21 @@ import BackgroundTasks
           self?.handleAppRefresh(task: refreshTask)
         }
       }
+
+      BGTaskScheduler.shared.register(forTaskWithIdentifier: processingTaskIdentifier, using: nil) { [weak self] task in
+        if let processingTask = task as? BGProcessingTask {
+          self?.handleProcessingTask(task: processingTask)
+        }
+      }
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  @available(iOS 13.0, *)
+  func scheduleBackgroundTasks() {
+    scheduleAppRefresh()
+    scheduleProcessingTask()
   }
 
   @available(iOS 13.0, *)
@@ -71,6 +92,19 @@ import BackgroundTasks
       try BGTaskScheduler.shared.submit(request)
     } catch {
       print("[BGTask] Error scheduling BGAppRefresh: \(error)")
+    }
+  }
+
+  @available(iOS 13.0, *)
+  func scheduleProcessingTask() {
+    let request = BGProcessingTaskRequest(identifier: processingTaskIdentifier)
+    request.requiresNetworkConnectivity = true
+    request.requiresExternalPower = false
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 20 * 60) // 20 mins
+    do {
+      try BGTaskScheduler.shared.submit(request)
+    } catch {
+      print("[BGTask] Error scheduling BGProcessingTask: \(error)")
     }
   }
 
@@ -92,10 +126,28 @@ import BackgroundTasks
     }
   }
 
+  @available(iOS 13.0, *)
+  private func handleProcessingTask(task: BGProcessingTask) {
+    scheduleProcessingTask()
+
+    let channel = FlutterMethodChannel(
+      name: "com.samtigis.client/background_task",
+      binaryMessenger: flutterEngine.binaryMessenger
+    )
+
+    task.expirationHandler = {
+      // Clean up if task expires
+    }
+
+    channel.invokeMethod("onBackgroundRefresh", arguments: nil) { _ in
+      task.setTaskCompleted(success: true)
+    }
+  }
+
   override func applicationDidEnterBackground(_ application: UIApplication) {
     super.applicationDidEnterBackground(application)
     if #available(iOS 13.0, *) {
-      scheduleAppRefresh()
+      scheduleBackgroundTasks()
     }
   }
 

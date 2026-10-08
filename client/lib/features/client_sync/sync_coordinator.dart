@@ -110,6 +110,7 @@ class SyncCoordinator extends ChangeNotifier {
     );
     notifyListeners();
 
+    await BackgroundTaskManager.setKeepScreenOn(true);
     await BackgroundTaskManager.beginBackgroundTask();
 
     try {
@@ -321,6 +322,7 @@ class SyncCoordinator extends ChangeNotifier {
       );
       notifyListeners();
     } finally {
+      await BackgroundTaskManager.setKeepScreenOn(false);
       await BackgroundTaskManager.endBackgroundTask();
     }
   }

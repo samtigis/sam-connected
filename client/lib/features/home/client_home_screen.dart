@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/discovery_service.dart';
+import '../../core/platform/background_task_manager.dart';
 import '../client_sync/auto_sync_service.dart';
 import '../client_sync/client_sync_screen.dart';
 import '../client_sync/gallery_scanner_service.dart';
@@ -48,6 +49,11 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     _discoveryService = DiscoveryService();
     _autoSyncService = AutoSyncService(_syncCoordinator);
     _galleryController = GalleryController(_apiClient);
+
+    // Register iOS Native BGTaskScheduler listener
+    BackgroundTaskManager.initialize(onRefresh: () async {
+      await _autoSyncService.triggerAutoSync(reason: 'iOS Background Refresh / Processing');
+    });
 
     // Listen to mDNS server discovery updates
     _discoveryService.addListener(_onDiscoveryUpdate);
