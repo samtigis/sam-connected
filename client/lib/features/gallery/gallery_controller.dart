@@ -7,10 +7,59 @@ import '../../core/models/gallery_media_item.dart';
 import '../../core/models/media_item.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/device_identity.dart';
+import '../../core/utils/transfer_speed_tracker.dart';
 import '../client_sync/smart_hasher.dart';
 
 enum GalleryViewMode { device, server }
 enum GalleryFilter { all, unsynced, synced, photos, videos }
+
+class ActiveTaskState {
+  final bool isActive;
+  final bool isBackup; // true: backup, false: pull
+  final int current;
+  final int total;
+  final String title;
+  final double itemProgress; // 0.0 - 1.0
+  final double overallProgress; // 0.0 - 1.0
+  final String speed; // e.g. "14.2 MB/s"
+  final bool isMinimized;
+
+  const ActiveTaskState({
+    this.isActive = false,
+    this.isBackup = true,
+    this.current = 0,
+    this.total = 0,
+    this.title = '',
+    this.itemProgress = 0.0,
+    this.overallProgress = 0.0,
+    this.speed = '0 KB/s',
+    this.isMinimized = false,
+  });
+
+  ActiveTaskState copyWith({
+    bool? isActive,
+    bool? isBackup,
+    int? current,
+    int? total,
+    String? title,
+    double? itemProgress,
+    double? overallProgress,
+    String? speed,
+    bool? isMinimized,
+  }) {
+    return ActiveTaskState(
+      isActive: isActive ?? this.isActive,
+      isBackup: isBackup ?? this.isBackup,
+      current: current ?? this.current,
+      total: total ?? this.total,
+      title: title ?? this.title,
+      itemProgress: itemProgress ?? this.itemProgress,
+      overallProgress: overallProgress ?? this.overallProgress,
+      speed: speed ?? this.speed,
+      isMinimized: isMinimized ?? this.isMinimized,
+    );
+  }
+}
 
 class TimelineDateGroup {
   final String title;
@@ -48,6 +97,27 @@ class GalleryController extends ChangeNotifier {
   int _serverTotalCount = 0;
   List<Map<String, dynamic>> _serverDevices = [];
   String? _selectedDeviceId;
+
+  ActiveTaskState _activeTask = const ActiveTaskState();
+  ActiveTaskState get activeTask => _activeTask;
+
+  bool _cancelTaskRequested = false;
+
+  void cancelActiveTask() {
+    _cancelTaskRequested = true;
+    _activeTask = const ActiveTaskState();
+    notifyListeners();
+  }
+
+  void toggleTaskMinimized() {
+    _activeTask = _activeTask.copyWith(isMinimized: !_activeTask.isMinimized);
+    notifyListeners();
+  }
+
+  void setTaskMinimized(bool val) {
+    _activeTask = _activeTask.copyWith(isMinimized: val);
+    notifyListeners();
+  }
 
   GalleryViewMode get viewMode => _viewMode;
   GalleryFilter get currentFilter => _currentFilter;
@@ -405,7 +475,10 @@ class GalleryController extends ChangeNotifier {
   }
 
   /// Backs up a single local media item directly to the server
-  Future<bool> backupSingleAsset(GalleryMediaItem item) async {
+  Future<bool> backupSingleAsset(
+    GalleryMediaItem item, {
+    void Function(double progress, String speed)? onProgress,
+  }) async {
     if (item.isSynced || item.localEntity == null) return true;
 
     try {
@@ -429,6 +502,7 @@ class GalleryController extends ChangeNotifier {
         }
       }
 
+      final speedTracker = TransferSpeedTracker();
       Map<String, dynamic> uploadRes;
       try {
         uploadRes = await _apiClient.upload(
@@ -442,6 +516,13 @@ class GalleryController extends ChangeNotifier {
               ? item.videoDuration.inSeconds.toDouble()
               : null,
           thumbnailFile: thumbFile,
+          onSendProgress: (sent, total) {
+            if (total > 0 && onProgress != null) {
+              speedTracker.update(sent);
+              final p = sent / total;
+              onProgress(p, speedTracker.formattedSpeed);
+            }
+          },
         );
       } finally {
         if (thumbFile != null && await thumbFile.exists()) {
@@ -474,29 +555,68 @@ class GalleryController extends ChangeNotifier {
     }
   }
 
-  /// Backs up a batch of selected items with progress callbacks
+  /// Backs up a batch of selected items with progress callbacks and speed tracking
   Future<int> backupSelectedAssets(
     List<GalleryMediaItem> items, {
-    void Function(int current, int total, String title)? onProgress,
+    void Function(int current, int total, String title, double itemProgress, String speed)? onProgress,
     bool Function()? isCancelled,
   }) async {
     final toBackup = items.where((i) => !i.isSynced && i.localEntity != null).toList();
     if (toBackup.isEmpty) return 0;
 
+    _cancelTaskRequested = false;
     int successCount = 0;
     final total = toBackup.length;
 
+    _activeTask = ActiveTaskState(
+      isActive: true,
+      isBackup: true,
+      current: 1,
+      total: total,
+      title: toBackup.first.title,
+      overallProgress: 0.0,
+      itemProgress: 0.0,
+      speed: '0 KB/s',
+      isMinimized: false,
+    );
+    notifyListeners();
+
     for (int i = 0; i < total; i++) {
-      if (isCancelled != null && isCancelled()) break;
+      if ((isCancelled != null && isCancelled()) || _cancelTaskRequested) break;
 
       final item = toBackup[i];
-      onProgress?.call(i + 1, total, item.title);
+      final overallP = i / total;
 
-      final ok = await backupSingleAsset(item);
+      _activeTask = _activeTask.copyWith(
+        current: i + 1,
+        total: total,
+        title: item.title,
+        overallProgress: overallP,
+        itemProgress: 0.0,
+      );
+      notifyListeners();
+      onProgress?.call(i + 1, total, item.title, 0.0, '0 KB/s');
+
+      final ok = await backupSingleAsset(
+        item,
+        onProgress: (itemP, speed) {
+          final liveOverall = (i + itemP) / total;
+          _activeTask = _activeTask.copyWith(
+            itemProgress: itemP,
+            overallProgress: liveOverall,
+            speed: speed,
+          );
+          notifyListeners();
+          onProgress?.call(i + 1, total, item.title, itemP, speed);
+        },
+      );
       if (ok) {
         successCount++;
       }
     }
+
+    _activeTask = const ActiveTaskState();
+    notifyListeners();
 
     return successCount;
   }
@@ -505,7 +625,7 @@ class GalleryController extends ChangeNotifier {
   /// with 100% original quality, zero re-compression, at line speed.
   Future<bool> pullMediaToGallery(
     GalleryMediaItem item, {
-    void Function(double progress)? onProgress,
+    void Function(double progress, String speed)? onProgress,
   }) async {
     if (item.serverItem == null) return false;
 
@@ -514,13 +634,17 @@ class GalleryController extends ChangeNotifier {
       final fileName = item.serverItem!.fileName;
       final tempFilePath = '${tempDir.path}/pull_${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
+      final speedTracker = TransferSpeedTracker();
+
       // Fast streaming download directly to disk (raw wire speed, identity encoding avoids gzip CPU overhead)
       await _apiClient.downloadMediaRaw(
         mediaId: item.serverItem!.id,
         savePath: tempFilePath,
         onReceiveProgress: (received, total) {
           if (total > 0 && onProgress != null) {
-            onProgress(received / total);
+            speedTracker.update(received);
+            final p = received / total;
+            onProgress(p, speedTracker.formattedSpeed);
           }
         },
       );
@@ -596,33 +720,67 @@ class GalleryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Pull a batch of selected items missing locally to native gallery
+  /// Pull a batch of selected items missing locally to native gallery with speed tracking
   Future<int> pullBatchToGallery(
     List<GalleryMediaItem> items, {
-    void Function(int current, int total, String title, double itemProgress)? onProgress,
+    void Function(int current, int total, String title, double itemProgress, String speed)? onProgress,
     bool Function()? isCancelled,
   }) async {
     final toPull = items.where((i) => i.localEntity == null && i.serverItem != null).toList();
     if (toPull.isEmpty) return 0;
 
+    _cancelTaskRequested = false;
     int successCount = 0;
     final total = toPull.length;
 
+    _activeTask = ActiveTaskState(
+      isActive: true,
+      isBackup: false,
+      current: 1,
+      total: total,
+      title: toPull.first.title,
+      overallProgress: 0.0,
+      itemProgress: 0.0,
+      speed: '0 KB/s',
+      isMinimized: false,
+    );
+    notifyListeners();
+
     for (int i = 0; i < total; i++) {
-      if (isCancelled != null && isCancelled()) break;
+      if ((isCancelled != null && isCancelled()) || _cancelTaskRequested) break;
       final item = toPull[i];
-      onProgress?.call(i + 1, total, item.title, 0.0);
+
+      final overallP = i / total;
+      _activeTask = _activeTask.copyWith(
+        current: i + 1,
+        total: total,
+        title: item.title,
+        overallProgress: overallP,
+        itemProgress: 0.0,
+      );
+      notifyListeners();
+      onProgress?.call(i + 1, total, item.title, 0.0, '0 KB/s');
 
       final ok = await pullMediaToGallery(
         item,
-        onProgress: (itemP) {
-          onProgress?.call(i + 1, total, item.title, itemP);
+        onProgress: (itemP, speed) {
+          final liveOverall = (i + itemP) / total;
+          _activeTask = _activeTask.copyWith(
+            itemProgress: itemP,
+            overallProgress: liveOverall,
+            speed: speed,
+          );
+          notifyListeners();
+          onProgress?.call(i + 1, total, item.title, itemP, speed);
         },
       );
       if (ok) {
         successCount++;
       }
     }
+
+    _activeTask = const ActiveTaskState();
+    notifyListeners();
 
     return successCount;
   }

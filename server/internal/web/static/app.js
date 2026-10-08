@@ -162,7 +162,7 @@ function setupStorageActions() {
 
   // About Button
   document.getElementById('btnAbout').addEventListener('click', () => {
-    alert("📸 Sam Connected — Host Storage Server (Windows Edition)\nVersi: 1.0.0\n\nSolusi pencadangan foto & video lokal tanpa cloud publik.\nDikembangkan oleh Sam Tigis.");
+    alert("Sam Connected — Host Storage Server (Windows Edition)\nVersi: 1.0.0\n\nSolusi pencadangan foto & video lokal tanpa cloud publik.\nDikembangkan oleh Sam Tigis.");
   });
 }
 
@@ -257,8 +257,9 @@ async function fetchDevices() {
               </div>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-              <button class="btn btn-sm btn-outline btn-rename-device" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 8px; font-size: 12px;" title="Beri nama custom perangkat ini">
-                ✏️ Beri Nama
+              <button class="btn btn-sm btn-outline btn-rename-device" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" title="Beri nama custom perangkat ini">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                Beri Nama
               </button>
               <button class="btn btn-sm btn-outline btn-view-device-gallery" data-device="${escapeHtml(dev.device_id)}" style="padding: 4px 10px; font-size: 12px;">
                 Lihat Galeri
@@ -378,12 +379,16 @@ async function loadGallery() {
       card.innerHTML = `
         <img class="media-thumb" src="${thumbUrl}" loading="lazy" alt="${escapeHtml(item.file_name)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
         <div class="media-fallback ${isVideo ? 'video-fallback' : 'image-fallback'}" style="display: none;">
-          <div class="fallback-icon">${isVideo ? '🎬' : '🖼️'}</div>
+          <div class="fallback-icon">
+            ${isVideo 
+              ? '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>' 
+              : '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>'}
+          </div>
           <div class="fallback-name">${escapeHtml(item.file_name)}</div>
         </div>
         ${isVideo ? `<div class="media-badge video">${durationBadge}</div>` : ''}
         ${isHeic ? `<div class="media-badge" style="position: absolute; top: 6px; left: 6px; background: rgba(14, 165, 233, 0.85); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">HEIC</div>` : ''}
-        ${item.is_favorite ? `<div class="media-badge fav">⭐</div>` : ''}
+        ${item.is_favorite ? `<div class="media-badge fav"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg></div>` : ''}
         <div class="media-overlay">
           <div>${escapeHtml(item.file_name)}</div>
           <div>${formatBytes(item.file_size)}</div>
@@ -470,11 +475,15 @@ function openLightbox(index) {
   dlBtn.download = item.file_name;
 
   const favBtn = document.getElementById('btnLightboxFavorite');
-  favBtn.textContent = item.is_favorite ? '⭐' : '☆';
+  favBtn.innerHTML = item.is_favorite 
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
   favBtn.onclick = async () => {
     await fetch(`/api/v1/media/${item.id}/favorite`, { method: 'POST' });
     item.is_favorite = !item.is_favorite;
-    favBtn.textContent = item.is_favorite ? '⭐' : '☆';
+    favBtn.innerHTML = item.is_favorite 
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
     loadGallery();
   };
 
@@ -495,15 +504,18 @@ function openLightbox(index) {
       <div style="display: flex; flex-direction: column; align-items: center; max-height: 100%; max-width: 100%;">
         <video src="${rawUrl}" controls autoplay style="max-height: 75vh; max-width: 100%; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"></video>
         <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-          <button id="btnOpenInSystemPlayer" class="btn btn-sm btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-            🎬 Buka di Player Windows (VLC / Media Player)
+          <button id="btnOpenInSystemPlayer" class="btn btn-sm btn-primary" style="padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            Buka di Player Windows (VLC / Media Player)
           </button>
-          <a href="${rawUrl}" download="${escapeHtml(item.file_name)}" class="btn btn-sm btn-outline" style="padding: 6px 12px; font-size: 12px;">
-            📥 Unduh File Asli
+          <a href="${rawUrl}" download="${escapeHtml(item.file_name)}" class="btn btn-sm btn-outline" style="padding: 6px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Unduh File Asli
           </a>
         </div>
-        <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center;">
-          💡 Tip: Video format Apple (HEVC/QuickTime). Jika layar hitam di browser Windows, klik tombol "Buka di Player Windows" di atas untuk memutar langsung dengan akselerasi penuh.
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px; text-align: center; display: inline-flex; align-items: center; gap: 4px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+          Tip: Video format Apple (HEVC/QuickTime). Jika layar hitam di browser Windows, klik tombol "Buka di Player Windows" di atas untuk memutar langsung dengan akselerasi penuh.
         </div>
       </div>
     `;
@@ -532,15 +544,18 @@ function openLightbox(index) {
       <div style="display: flex; flex-direction: column; align-items: center; max-height: 100%; max-width: 100%;">
         <img src="${thumbUrl}" alt="${escapeHtml(item.file_name)}" style="max-height: 75vh; max-width: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);">
         <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-          <button id="btnOpenInSystemPhoto" class="btn btn-sm btn-primary" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-            🖼️ Buka di Aplikasi Photos Windows
+          <button id="btnOpenInSystemPhoto" class="btn btn-sm btn-primary" style="padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            Buka di Aplikasi Photos Windows
           </button>
-          <a href="${rawUrl}" download="${escapeHtml(item.file_name)}" class="btn btn-sm btn-outline" style="padding: 6px 12px; font-size: 12px;">
-            📥 Unduh File Asli (.HEIC)
+          <a href="${rawUrl}" download="${escapeHtml(item.file_name)}" class="btn btn-sm btn-outline" style="padding: 6px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Unduh File Asli (.HEIC)
           </a>
         </div>
-        <div style="font-size: 11px; color: #38bdf8; margin-top: 6px; text-align: center; background: rgba(56, 189, 248, 0.1); padding: 4px 12px; border-radius: 6px;">
-          📷 Format Apple HEIC (Pratinjau JPEG Kualitas Tinggi) • Klik "Buka di Aplikasi Photos" untuk melihat file asli.
+        <div style="font-size: 11px; color: #38bdf8; margin-top: 6px; text-align: center; background: rgba(56, 189, 248, 0.1); padding: 4px 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          Format Apple HEIC (Pratinjau JPEG Kualitas Tinggi) • Klik "Buka di Aplikasi Photos" untuk melihat file asli.
         </div>
       </div>
     `;
@@ -569,8 +584,9 @@ function openLightbox(index) {
       <div style="display: flex; flex-direction: column; align-items: center; max-height: 100%; max-width: 100%;">
         <img src="${rawUrl}" alt="${escapeHtml(item.file_name)}" style="max-height: 80vh; max-width: 100%; object-fit: contain; border-radius: 8px;" onerror="this.onerror=null; this.src='${thumbUrl}';">
         <div style="margin-top: 8px;">
-          <button id="btnOpenInSystemPhoto" class="btn btn-sm btn-outline" style="padding: 4px 12px; font-size: 12px;">
-            🖼️ Buka di Aplikasi Windows
+          <button id="btnOpenInSystemPhoto" class="btn btn-sm btn-outline" style="padding: 4px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+            Buka di Aplikasi Windows
           </button>
         </div>
       </div>

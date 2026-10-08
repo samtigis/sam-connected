@@ -6,6 +6,7 @@ import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
 import '../../core/platform/background_task_manager.dart';
 import '../../core/utils/device_identity.dart';
+import '../../core/utils/transfer_speed_tracker.dart';
 import 'gallery_scanner_service.dart';
 
 class SyncProgressState {
@@ -17,6 +18,7 @@ class SyncProgressState {
   final int uploadedCount;
   final int skippedCount;
   final int errorCount;
+  final String transferSpeed; // e.g. "14.2 MB/s"
   final List<String> logs;
 
   SyncProgressState({
@@ -28,6 +30,7 @@ class SyncProgressState {
     this.uploadedCount = 0,
     this.skippedCount = 0,
     this.errorCount = 0,
+    this.transferSpeed = '0 KB/s',
     this.logs = const [],
   });
 
@@ -40,6 +43,7 @@ class SyncProgressState {
     int? uploadedCount,
     int? skippedCount,
     int? errorCount,
+    String? transferSpeed,
     List<String>? logs,
   }) {
     return SyncProgressState(
@@ -51,6 +55,7 @@ class SyncProgressState {
       uploadedCount: uploadedCount ?? this.uploadedCount,
       skippedCount: skippedCount ?? this.skippedCount,
       errorCount: errorCount ?? this.errorCount,
+      transferSpeed: transferSpeed ?? this.transferSpeed,
       logs: logs ?? this.logs,
     );
   }
@@ -258,6 +263,7 @@ class SyncCoordinator extends ChangeNotifier {
           }
         } catch (_) {}
 
+        final speedTracker = TransferSpeedTracker();
         try {
           final uploadRes = await apiClient.upload(
             file: item.file,
@@ -272,8 +278,12 @@ class SyncCoordinator extends ChangeNotifier {
             thumbnailFile: thumbFile,
             onSendProgress: (sent, total) {
               if (total > 0) {
+                speedTracker.update(sent);
                 final double p = sent / total;
-                _state = _state.copyWith(currentProgress: p);
+                _state = _state.copyWith(
+                  currentProgress: p,
+                  transferSpeed: speedTracker.formattedSpeed,
+                );
                 notifyListeners();
               }
             },

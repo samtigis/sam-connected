@@ -6,6 +6,7 @@ import '../client_sync/auto_sync_service.dart';
 import '../client_sync/client_sync_screen.dart';
 import '../client_sync/gallery_scanner_service.dart';
 import '../client_sync/sync_coordinator.dart';
+import '../common/transfer_notification_banner.dart';
 import '../gallery/gallery_controller.dart';
 import '../gallery/gallery_screen.dart';
 import '../settings/sync_settings_screen.dart';
@@ -138,9 +139,31 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: pages,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            AnimatedBuilder(
+              animation: _galleryController,
+              builder: (context, _) {
+                if (_galleryController.activeTask.isActive) {
+                  return TransferNotificationBanner(
+                    task: _galleryController.activeTask,
+                    onToggleMinimized: _galleryController.toggleTaskMinimized,
+                    onCancel: _galleryController.cancelActiveTask,
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            Expanded(
+              child: IndexedStack(
+                index: _currentIndex,
+                children: pages,
+              ),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,

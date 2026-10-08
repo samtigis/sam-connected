@@ -1,10 +1,10 @@
-# 📸 Sam Connected
+# Sam Connected
 
 **Sam Connected** adalah solusi pencadangan foto & video otomatis lokal berkecepatan tinggi tanpa cloud publik, dirancang khusus untuk membackup galeri HP (iOS / Android) langsung ke penyimpanan laptop/PC (macOS / Windows) di jaringan Wi-Fi lokal.
 
 ---
 
-## 🏗️ Arsitektur Sistem
+## Arsitektur Sistem
 
 Proyek ini menggunakan arsitektur **Hybrid Dual-Engine**:
 
@@ -35,28 +35,28 @@ Proyek ini menggunakan arsitektur **Hybrid Dual-Engine**:
    - **Unified Dual-Mode**:
      - **Mode Server / Host Storage (Desktop Only)**: Manajemen storage harddisk, kontrol engine daemon sidecar, pemantauan kapasitas HDD, live log aktivitas, dan tombol akses cepat **Galeri Server**.
      - **Mode Client / Uploader (Mobile / Semua Perangkat)**:
-       - 🖼️ **Galeri Perangkat & Server Terpadu**:
+       - **Galeri Perangkat & Server Terpadu**:
           - **Indikator Status Visual**: Setiap foto dan video di galeri dilengkapi tanda status di pojok kanan atas:
-            - **Centang Hijau (✅)**: File sudah aman tercadangkan di server host.
-            - **Tanda Seru Oranye (⚠️)**: File lokal di HP belum tercadangkan ke server.
-          - **Filter Cerdas**: Filter instan untuk melihat *Semua*, *Belum Backup (⚠️)*, *Sudah Backup (✅)*, *Foto*, dan *Video*.
+            - **Centang Hijau**: File sudah aman tercadangkan di server host.
+            - **Tanda Seru Abu-abu / Oranye**: File belum ada di perangkat lokal atau belum tercadangkan ke server.
+          - **Filter Cerdas**: Filter instan untuk melihat *Semua*, *Belum Backup*, *Sudah Backup*, *Foto*, dan *Video*.
           - **Mode Switcher**: Beralih antara **Galeri Perangkat (iPhone)** dan **Galeri Server (Host)** dengan satu sentuhan.
           - **Media Viewer Lengkap & Pemutar Video**:
             - Lightbox interaktif foto (pinch-to-zoom hingga 5x, swipe antarmedia, lembar info detail EXIF & metadata).
             - **Pemutar Video Terintegrasi**: Putar video langsung di aplikasi layaknya galeri bawaan (kontrol play/pause, slider scrubber, cap waktu durasi, dan toggle audio mute).
-            - **Aksi Cepat Cadangkan**: Tombol sekali klik di viewer untuk mencadangkan file individual yang bertanda seru langsung ke server.
-       - ☁️ **Manajer Cadangan**: Pemindaian galeri lokal, kalkulasi hash cerdas SHA-256 preflight, dan progres upload real-time.
-       - ⏱️ **Jadwal & Otomatisasi Sinkronisasi**: Konfigurasi otomatis kapan sinkron berjalan (saat aplikasi dibuka, interval berkala tiap 15m/1jam/24jam, aturan Wi-Fi only). Pengguna **tidak perlu lagi menyentuh aplikasi Files di iPhone/iPad**!
+            - **Aksi Cepat Cadangkan / Tarik**: Tombol sekali klik di viewer untuk mencadangkan file individual ke server atau menarik file server ke galeri asli tanpa kompresi.
+       - **Manajer Cadangan**: Pemindaian galeri lokal, kalkulasi hash cerdas SHA-256 preflight, dan progres upload real-time.
+       - **Jadwal & Otomatisasi Sinkronisasi**: Konfigurasi otomatis kapan sinkron berjalan (saat aplikasi dibuka, interval berkala tiap 15m/1jam/24jam, aturan Wi-Fi only). Pengguna **tidak perlu lagi menyentuh aplikasi Files di iPhone/iPad**!
 
 ---
 
-## 🚀 Panduan Menjalankan
+## Panduan Menjalankan
 
 ### A. Menjalankan sebagai Server di Windows PC
 
 Tersedia aplikasi desktop siap pakai **`SamConnectedServer.exe`** di root folder dan **`client/assets/bin/server.exe`**.
 
-#### 🚀 Cara Menjalankan (Sangat Mudah):
+#### Cara Menjalankan (Sangat Mudah):
 Cukup klik ganda (double-click) **`SamConnectedServer.exe`** atau **`start_server.bat`** di folder root proyek.
 - **Antarmuka Desktop Native Lengkap**: Jendela aplikasi GUI langsung terbuka (persis seperti di MacBook).
 - **Dual-Channel Auto-Discovery**: Memancarkan sinyal server secara aktif di jaringan Wi-Fi lokal melalui **mDNS Zeroconf** (`_photobackup._tcp`) dan **UDP Discovery Beacon** (Port `8088`) sehingga client iPhone/iPad langsung terhubung otomatis tanpa ketik IP.
@@ -65,7 +65,7 @@ Cukup klik ganda (double-click) **`SamConnectedServer.exe`** atau **`start_serve
 - **Galeri Server (Google Photos-style)**: Dilengkapi tab Galeri bawaan dengan timeline foto/video, filter (Foto, Video, Favorit), search, dan Lightbox Viewer interaktif (zoom, detail EXIF kamera/resolusi/ukuran/SHA-256, unduh file asli, dan hapus).
 - **Akses Fleksibel**: Selain lewat jendela aplikasi di Windows, antarmuka ini juga bisa diakses langsung via browser dari laptop/tablet di jaringan Wi-Fi lokal melalui `http://[IP-PC]:8080`.
 
-#### 🛡️ Konfigurasi Windows Firewall (1-Klik):
+#### Konfigurasi Windows Firewall (1-Klik):
 Jika client belum langsung membaca server di jaringan Wi-Fi, cukup klik kanan dan pilih *Run as Administrator* pada file **`setup_firewall.bat`** untuk membuka port `8080` (TCP) dan `8088` (UDP) secara otomatis.
 
 #### Menjalankan via Command Line (Headless / Mode Server Background):
@@ -112,7 +112,7 @@ flutter run -d <device_or_simulator_id>
 
 ---
 
-## 📡 API Endpoints (v1)
+## API Endpoints (v1)
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -126,7 +126,7 @@ flutter run -d <device_or_simulator_id>
 
 ---
 
-## 🛠️ Kompilasi Binary Server (Build dari Source)
+## Kompilasi Binary Server (Build dari Source)
 
 Binary siap pakai sudah disertakan di `client/assets/bin/` (`server.exe` untuk Windows dan `server_mac` untuk macOS).
 Jika Anda memodifikasi kode Go di folder `server/`, berikut cara mengompilasi ulang:
@@ -150,9 +150,9 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o ../client/ass
 
 ---
 
-## 💡 Tentang Sam Connected (About)
+## Tentang Sam Connected (About)
 
-### 🌟 Latar Belakang & Filosofi
+### Latar Belakang & Filosofi
 Di era digital saat ini, kamera smartphone menghasilkan ribuan foto dan video beresolusi tinggi (4K/ProRes) yang cepat memenuhi memori perangkat. Solusi cloud komersial (seperti Google Photos, Apple iCloud, atau Dropbox) menghadirkan tantangan:
 - **Biaya Langganan Bulanan**: Biaya storage terus membengkak seiring bertambahnya koleksi foto keluarga Anda.
 - **Kekhawatiran Privasi**: Foto dan kenangan pribadi tersimpan di server pihak ketiga yang rentan pemindaian data atau kebocoran privasi.
@@ -162,13 +162,13 @@ Di era digital saat ini, kamera smartphone menghasilkan ribuan foto dan video be
 
 ---
 
-### ✨ Keunggulan Utama
+### Keunggulan Utama
 
-- **🚀 Kecepatan Penuh Jaringan Lokal (LAN / Wi-Fi 6)**: Pencadangan berjalan melalui jalur Wi-Fi lokal berkecepatan tinggi tanpa bergantung pada kecepatan upload internet ISP.
-- **🔒 100% Privasi & Tanpa Biaya Langganan**: Foto dan video Anda tidak pernah meninggalkan rumah Anda. Tidak ada biaya bulanan, cukup gunakan harddisk atau SSD yang Anda miliki.
-- **🧠 Deduplikasi Cerdas (Streaming SHA-256 Preflight)**: Setiap foto diperiksa hash-nya terlebih dahulu. Jika file sudah pernah dicadangkan, file tidak akan diunggah ulang—menghemat waktu, baterai, dan ruang harddisk.
-- **🌐 Zero-Configuration Discovery (mDNS Zeroconf)**: Begitu aplikasi dibuka di HP, server MacBook/PC Anda akan otomatis terdeteksi via protokol `_photobackup._tcp` tanpa perlu repot mengetik IP manual.
-- **📂 Struktur File Rapi & Tanpa Vendor Lock-In**:
+- **Kecepatan Penuh Jaringan Lokal (LAN / Wi-Fi 6)**: Pencadangan berjalan melalui jalur Wi-Fi lokal berkecepatan tinggi tanpa bergantung pada kecepatan upload internet ISP.
+- **100% Privasi & Tanpa Biaya Langganan**: Foto dan video Anda tidak pernah meninggalkan rumah Anda. Tidak ada biaya bulanan, cukup gunakan harddisk atau SSD yang Anda miliki.
+- **Deduplikasi Cerdas (Streaming SHA-256 Preflight)**: Setiap foto diperiksa hash-nya terlebih dahulu. Jika file sudah pernah dicadangkan, file tidak akan diunggah ulang—menghemat waktu, baterai, dan ruang harddisk.
+- **Zero-Configuration Discovery (mDNS Zeroconf)**: Begitu aplikasi dibuka di HP, server MacBook/PC Anda akan otomatis terdeteksi via protokol `_photobackup._tcp` tanpa perlu repot mengetik IP manual.
+- **Struktur File Rapi & Tanpa Vendor Lock-In**:
   File disimpan dalam struktur hierarki yang bersih:
   ```text
   storage/
@@ -179,15 +179,15 @@ Di era digital saat ini, kamera smartphone menghasilkan ribuan foto dan video be
               └── {sha256_hash}.mp4
   ```
   Anda dapat membuka, menyalin, dan memindahkan foto langsung dari Finder atau Windows Explorer kapan saja tanpa aplikasi khusus.
-- **🖼️ Auto-Generated Thumbnail & EXIF Parsing**: Server Go secara otomatis membuat thumbnail optimal dan membaca metadata tanggal pengambilan foto dari tag EXIF.
+- **Auto-Generated Thumbnail & EXIF Parsing**: Server Go secara otomatis membuat thumbnail optimal dan membaca metadata tanggal pengambilan foto dari tag EXIF.
 
 ---
 
-## 👨‍💻 Kontributor & Pengembang
+## Kontributor & Pengembang
 - **Pengembang**: Sam Tigis ([@samtigis](https://github.com/samtigis))
 - **Proyek**: Sam Connected Local Auto-Backup System
 
 ---
 
-## 📄 Lisensi
+## Lisensi
 Hak Cipta © 2026 Sam Connected. Dilindungi undang-undang.

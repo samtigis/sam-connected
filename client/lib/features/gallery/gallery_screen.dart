@@ -31,10 +31,6 @@ class _GalleryScreenState extends State<GalleryScreen> {
   // Batch backup & pull state
   bool _isBatchBackingUp = false;
   bool _isBatchPulling = false;
-  int _batchCurrent = 0;
-  int _batchTotal = 0;
-  String _batchCurrentTitle = '';
-  bool _cancelBatchRequested = false;
 
   @override
   void initState() {
@@ -117,114 +113,19 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     setState(() {
       _isBatchBackingUp = true;
-      _batchCurrent = 0;
-      _batchTotal = itemsToBackup.length;
-      _batchCurrentTitle = itemsToBackup.first.title;
-      _cancelBatchRequested = false;
-    });
-
-    bool dialogOpen = true;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dlgCtx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final progress = _batchTotal > 0 ? (_batchCurrent / _batchTotal) : 0.0;
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.cloud_upload_rounded, color: Colors.blueAccent),
-                SizedBox(width: 10),
-                Text('Mencadangkan Media', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '$_batchCurrent dari $_batchTotal media',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    Text(
-                      '${(progress * 100).toInt()}%',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _batchCurrentTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  _cancelBatchRequested = true;
-                  if (dialogOpen) {
-                    dialogOpen = false;
-                    Navigator.of(dlgCtx).pop();
-                  }
-                },
-                child: const Text('Batal'),
-              ),
-            ],
-          );
-        },
-      ),
-    ).then((_) {
-      dialogOpen = false;
+      _isSelectionMode = false;
+      _selectedIds.clear();
     });
 
     int successCount = 0;
     try {
       successCount = await widget.controller.backupSelectedAssets(
         itemsToBackup,
-        onProgress: (current, total, title) {
-          if (mounted) {
-            setState(() {
-              _batchCurrent = current;
-              _batchTotal = total;
-              _batchCurrentTitle = title;
-            });
-          }
-        },
-        isCancelled: () => _cancelBatchRequested,
       );
     } finally {
-      if (dialogOpen && mounted) {
-        dialogOpen = false;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-
       if (mounted) {
         setState(() {
           _isBatchBackingUp = false;
-        });
-
-        // Remove successfully synced IDs from selection
-        final successfulIds = itemsToBackup.map((i) => i.id).toSet();
-        setState(() {
-          _selectedIds.removeAll(successfulIds);
-          if (_selectedIds.isEmpty) {
-            _isSelectionMode = false;
-          }
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -241,143 +142,23 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Future<void> _startBatchPull(List<GalleryMediaItem> itemsToPull) async {
-    if (itemsToPull.isEmpty) return;
+    if (itemsToPull.isEmpty || _isBatchPulling) return;
 
-    int batchCurrent = 1;
-    final int batchTotal = itemsToPull.length;
-    String batchCurrentTitle = itemsToPull.first.title;
-    double batchItemProgress = 0.0;
-    double batchOverallProgress = 0.0;
-    bool cancelRequested = false;
-
-    StateSetter? dialogSetState;
-    bool dialogOpen = true;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dlgCtx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          dialogSetState = setDialogState;
-          final pct = (batchOverallProgress * 100).clamp(0, 100).toInt();
-          final itemPct = (batchItemProgress * 100).clamp(0, 100).toInt();
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.download_rounded, color: Color(0xFF2563EB)),
-                SizedBox(width: 10),
-                Text('Menarik Media ke Galeri', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Total Progress Header & Bar
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '$batchCurrent dari $batchTotal media',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    Text(
-                      '$pct%',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF2563EB)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: batchOverallProgress > 0 ? batchOverallProgress : null,
-                    minHeight: 8,
-                    backgroundColor: Colors.blue.withOpacity(0.15),
-                    color: const Color(0xFF2563EB),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // Current Item Progress Header & Bar
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        batchCurrentTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$itemPct%',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: batchItemProgress > 0 ? batchItemProgress : null,
-                    minHeight: 5,
-                    backgroundColor: Colors.grey.withOpacity(0.2),
-                    color: const Color(0xFF60A5FA),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  cancelRequested = true;
-                  if (dialogOpen) {
-                    dialogOpen = false;
-                    Navigator.of(dlgCtx).pop();
-                  }
-                },
-                child: const Text('Batal'),
-              ),
-            ],
-          );
-        },
-      ),
-    ).then((_) {
-      dialogOpen = false;
-      dialogSetState = null;
+    setState(() {
+      _isBatchPulling = true;
+      _isSelectionMode = false;
+      _selectedIds.clear();
     });
 
     int successCount = 0;
     try {
       successCount = await widget.controller.pullBatchToGallery(
         itemsToPull,
-        onProgress: (current, total, title, itemP) {
-          batchCurrent = current;
-          batchCurrentTitle = title;
-          batchItemProgress = itemP;
-          batchOverallProgress = total > 0 ? (((current - 1) + itemP) / total) : 0.0;
-          if (dialogSetState != null) {
-            dialogSetState!(() {});
-          }
-        },
-        isCancelled: () => cancelRequested,
       );
     } finally {
-      if (dialogOpen && mounted) {
-        dialogOpen = false;
-        Navigator.of(context, rootNavigator: true).pop();
-      }
-
       if (mounted) {
         setState(() {
           _isBatchPulling = false;
-          _isSelectionMode = false;
-          _selectedIds.clear();
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -664,7 +445,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
                           final ok = await ctrl.pullMediaToGallery(
                             item,
-                            onProgress: (p) {
+                            onProgress: (p, speed) {
                               setSheetState(() {
                                 pullProgress = p;
                               });
@@ -680,7 +461,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               SnackBar(
                                 content: Text(
                                   ok
-                                      ? 'Berhasil disimpan ke Galeri Foto perangkat! 🎉'
+                                      ? 'Berhasil disimpan ke Galeri Foto perangkat!'
                                       : 'Gagal menarik file dari server.',
                                 ),
                                 backgroundColor: ok ? const Color(0xFF16A34A) : Colors.red,
@@ -1159,13 +940,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
           if (ctrl.viewMode == GalleryViewMode.device) ...[
             const SizedBox(width: 8),
             _buildFilterChip(
-              'Belum Backup (⚠️ ${ctrl.unsyncedCount})',
+              'Belum Backup (${ctrl.unsyncedCount})',
               GalleryFilter.unsynced,
               Icons.warning_amber_rounded,
             ),
             const SizedBox(width: 8),
             _buildFilterChip(
-              'Sudah Backup (✅ ${ctrl.syncedCount})',
+              'Sudah Backup (${ctrl.syncedCount})',
               GalleryFilter.synced,
               Icons.check_circle_outline_rounded,
             ),
@@ -1554,7 +1335,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   : const Icon(Icons.cloud_upload_rounded, size: 18),
               label: Text(
                 _isBatchBackingUp
-                    ? '($_batchCurrent/$_batchTotal)'
+                    ? '(${widget.controller.activeTask.current}/${widget.controller.activeTask.total})'
                     : 'Cadangkan (${unsyncedSelected.length})',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
@@ -1577,7 +1358,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                   : const Icon(Icons.download_rounded, size: 18, color: Colors.white),
               label: Text(
                 _isBatchPulling
-                    ? '($_batchCurrent/$_batchTotal)'
+                    ? '(${widget.controller.activeTask.current}/${widget.controller.activeTask.total})'
                     : 'Tarik ke Galeri (${missingLocallySelected.length})',
                 style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
               ),

@@ -329,9 +329,33 @@ class _ClientSyncScreenState extends State<ClientSyncScreen> {
                     '${state.uploadedCount} dari ${state.totalToUpload} file',
                     style: theme.textTheme.labelSmall,
                   ),
-                  Text(
-                    '${((state.totalToUpload > 0 ? (state.uploadedCount / state.totalToUpload) : 0) * 100).toStringAsFixed(0)}%',
-                    style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: theme.colorScheme.outlineVariant, width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.speed_rounded, size: 12, color: theme.colorScheme.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              state.transferSpeed,
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${((state.totalToUpload > 0 ? (state.uploadedCount / state.totalToUpload) : 0) * 100).toStringAsFixed(0)}%',
+                        style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
                 ],
               ),

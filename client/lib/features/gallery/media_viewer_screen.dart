@@ -105,7 +105,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final success = await widget.controller.pullMediaToGallery(
       item,
-      onProgress: (p) {
+      onProgress: (p, speed) {
         if (mounted) {
           setState(() {
             _pullCurrentProgress = p;
@@ -194,15 +194,15 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   ctx,
                   'Galeri Perangkat Ini',
                   item.localEntity != null
-                      ? 'Tersimpan di Galeri Perangkat ✅'
-                      : 'Belum Ada di Galeri (dapat ditarik) ⚠️',
+                      ? 'Tersimpan di Galeri Perangkat'
+                      : 'Belum Ada di Galeri (dapat ditarik)',
                   item.localEntity != null ? Icons.phone_iphone_rounded : Icons.phonelink_erase_rounded,
                   highlightColor: item.localEntity != null ? const Color(0xFF16A34A) : const Color(0xFF6B7280),
                 ),
                 _buildInfoRow(
                   ctx,
                   'Status Server',
-                  item.isSynced ? 'Tersimpan Aman di Server ✅' : 'Belum Dicadangkan ⚠️',
+                  item.isSynced ? 'Tersimpan Aman di Server' : 'Belum Dicadangkan',
                   item.isSynced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
                   highlightColor: item.isSynced ? const Color(0xFF16A34A) : const Color(0xFFEA580C),
                 ),

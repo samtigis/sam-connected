@@ -2,8 +2,8 @@
 
 Tempatkan file binary daemon Go hasil kompilasi dari folder `server/` di sini agar dapat dipanggil secara otomatis oleh Flutter Desktop via `Process.start()`:
 
-- **macOS:** `server_mac` (Prebuilt siap pakai ✅)
-- **Windows:** `server.exe` (Prebuilt siap pakai ✅)
+- **macOS:** `server_mac` (Prebuilt siap pakai)
+- **Windows:** `server.exe` (Prebuilt siap pakai)
 - **Linux:** `server_linux`
 
 ### Perintah Kompilasi Ulang (dari root server):
