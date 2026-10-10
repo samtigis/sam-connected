@@ -152,7 +152,7 @@ class SyncCoordinator extends ChangeNotifier {
       _state = _state.copyWith(statusMessage: 'Memindai foto & video lokal...');
       notifyListeners();
       final scannedAssets = await scannerService.scanForUnsyncedAssets(
-        maxAssets: 500,
+        maxAssets: 50000,
         onProgress: (cur, tot) {
           _state = _state.copyWith(statusMessage: 'Memindai galeri: $cur/$tot');
           notifyListeners();

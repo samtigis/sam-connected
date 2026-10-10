@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import '../../core/models/gallery_media_item.dart';
+import '../../core/utils/formatters.dart';
 import 'gallery_controller.dart';
 import 'media_viewer_screen.dart';
 
@@ -728,6 +729,12 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               child: _buildSyncStatusCard(theme, ctrl),
                             ),
 
+                          // Status Summary Card for Server Gallery
+                          if (ctrl.viewMode == GalleryViewMode.server && !_isSelectionMode)
+                            SliverToBoxAdapter(
+                              child: _buildServerStorageStatusCard(theme, ctrl),
+                            ),
+
                           // Timeline Groups
                           for (final group in ctrl.timelineGroups) ...[
                             SliverToBoxAdapter(
@@ -763,79 +770,221 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   Widget _buildSyncStatusCard(ThemeData theme, GalleryController ctrl) {
+    final syncedSizeStr = formatBytes(ctrl.deviceBackedUpBytes);
+    final freeSpaceStr = ctrl.serverFreeBytes > 0 ? formatBytes(ctrl.serverFreeBytes) : null;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Row(
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    // Synced counter
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16A34A).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 15),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${ctrl.syncedCount} Terbackup${ctrl.deviceBackedUpBytes > 0 ? ' ($syncedSizeStr)' : ''}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF16A34A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Unsynced counter
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEA580C).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFEA580C), size: 15),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${ctrl.unsyncedCount} Belum',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFEA580C),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (ctrl.unsyncedCount > 0 && widget.onNavigateToSync != null)
+                TextButton.icon(
+                  onPressed: widget.onNavigateToSync,
+                  icon: const Icon(Icons.cloud_upload_rounded, size: 16),
+                  label: const Text('Cadangkan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+            ],
+          ),
+          if (ctrl.deviceBackedUpBytes > 0 || freeSpaceStr != null) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                // Synced counter
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF16A34A).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+                if (ctrl.deviceBackedUpBytes > 0) ...[
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 16),
+                      const Icon(Icons.storage_rounded, size: 13, color: Color(0xFF71717A)),
                       const SizedBox(width: 4),
                       Text(
-                        '${ctrl.syncedCount} Terbackup',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF16A34A),
-                        ),
+                        'Total: $syncedSizeStr (${ctrl.syncedCount} file)',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF71717A), fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                // Unsynced counter
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEA580C).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
+                ],
+                if (ctrl.deviceBackedUpBytes > 0 && freeSpaceStr != null)
+                  const Text('•', style: TextStyle(fontSize: 11, color: Color(0xFF71717A))),
+                if (freeSpaceStr != null) ...[
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: Color(0xFFEA580C), size: 16),
+                      const Icon(Icons.dns_rounded, size: 13, color: Color(0xFF71717A)),
                       const SizedBox(width: 4),
                       Text(
-                        '${ctrl.unsyncedCount} Belum',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFFEA580C),
-                        ),
+                        'Free space server: $freeSpaceStr',
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF71717A), fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
-                ),
+                ],
               ],
             ),
-          ),
-          if (ctrl.unsyncedCount > 0 && widget.onNavigateToSync != null)
-            TextButton.icon(
-              onPressed: widget.onNavigateToSync,
-              icon: const Icon(Icons.cloud_upload_rounded, size: 16),
-              label: const Text('Cadangkan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                visualDensity: VisualDensity.compact,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServerStorageStatusCard(ThemeData theme, GalleryController ctrl) {
+    final devId = ctrl.selectedDeviceId;
+    final devName = devId == null ? 'Semua Perangkat' : ctrl.getDeviceFriendlyName(devId);
+    final count = ctrl.selectedDeviceBackedUpCount;
+    final bytesStr = formatBytes(ctrl.selectedDeviceBackedUpBytes);
+    final freeSpaceStr = ctrl.serverFreeBytes > 0 ? formatBytes(ctrl.serverFreeBytes) : null;
+
+    IconData devIcon = Icons.devices_rounded;
+    if (devId != null) {
+      final lower = (devId + devName).toLowerCase();
+      if (lower.contains('ipad')) {
+        devIcon = Icons.tablet_mac_rounded;
+      } else if (lower.contains('iphone')) {
+        devIcon = Icons.phone_iphone_rounded;
+      } else if (lower.contains('android')) {
+        devIcon = Icons.android_rounded;
+      } else if (lower.contains('pc') || lower.contains('windows')) {
+        devIcon = Icons.laptop_windows_rounded;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(devIcon, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  devName,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16A34A).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$count file',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.storage_rounded, size: 13, color: Color(0xFF71717A)),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Sudah backup $count file (total $bytesStr)',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF71717A), fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              if (freeSpaceStr != null) ...[
+                const Text('•', style: TextStyle(fontSize: 11, color: Color(0xFF71717A))),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.dns_rounded, size: 13, color: Color(0xFF71717A)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Free space server: $freeSpaceStr',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF71717A), fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
@@ -850,7 +999,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         children: [
           ChoiceChip(
             label: Text(
-              'Semua Perangkat (${ctrl.totalCount})',
+              'Semua Perangkat (${ctrl.selectedDeviceId == null ? ctrl.selectedDeviceBackedUpCount : ctrl.totalCount}${ctrl.selectedDeviceId == null && ctrl.selectedDeviceBackedUpBytes > 0 ? ' • ${formatBytes(ctrl.selectedDeviceBackedUpBytes)}' : ''})',
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
             ),
             avatar: const Icon(Icons.devices_rounded, size: 14),
@@ -872,6 +1021,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
     final customName = dev['custom_name']?.toString() ?? '';
     final displayName = dev['display_name']?.toString() ?? '';
     final count = (dev['total_media'] as num?)?.toInt() ?? 0;
+    final bytes = (dev['total_bytes'] as num?)?.toInt() ?? 0;
+    final bytesStr = bytes > 0 ? ' • ${formatBytes(bytes)}' : '';
     final isSelected = ctrl.selectedDeviceId == devId;
 
     IconData icon = Icons.smartphone_rounded;
@@ -929,7 +1080,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
 
     return ChoiceChip(
-      label: Text('$name ($count)', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+      label: Text('$name ($count$bytesStr)', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
       avatar: Icon(icon, size: 14),
       selected: isSelected,
       visualDensity: VisualDensity.compact,
@@ -1388,47 +1539,57 @@ class _GalleryScreenState extends State<GalleryScreen> {
   Widget _buildEmptyView(ThemeData theme, GalleryController ctrl) {
     final isDevice = ctrl.viewMode == GalleryViewMode.device;
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withOpacity(0.3),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                isDevice ? Icons.photo_library_outlined : Icons.cloud_off_rounded,
-                size: 64,
-                color: theme.colorScheme.primary,
+    return Column(
+      children: [
+        if (isDevice)
+          _buildSyncStatusCard(theme, ctrl)
+        else
+          _buildServerStorageStatusCard(theme, ctrl),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isDevice ? Icons.photo_library_outlined : Icons.cloud_off_rounded,
+                      size: 64,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    isDevice ? 'Tidak Ada Foto di Perangkat' : 'Belum Ada Foto di Server',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isDevice
+                        ? 'Foto dan video dari kamera ${ctrl.deviceLabel} Anda akan muncul rapi di sini.'
+                        : 'Cadangkan foto dari ${ctrl.deviceLabel} Anda untuk menyimpannya di host server MacBook / Windows.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                  const SizedBox(height: 24),
+                  if (!isDevice && widget.onNavigateToSync != null)
+                    FilledButton.icon(
+                      onPressed: widget.onNavigateToSync,
+                      icon: const Icon(Icons.cloud_upload_rounded),
+                      label: const Text('Mulai Cadangkan Foto'),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              isDevice ? 'Tidak Ada Foto di Perangkat' : 'Belum Ada Foto di Server',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isDevice
-                  ? 'Foto dan video dari kamera ${ctrl.deviceLabel} Anda akan muncul rapi di sini.'
-                  : 'Cadangkan foto dari ${ctrl.deviceLabel} Anda untuk menyimpannya di host server MacBook / Windows.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
-            ),
-            const SizedBox(height: 24),
-            if (!isDevice && widget.onNavigateToSync != null)
-              FilledButton.icon(
-                onPressed: widget.onNavigateToSync,
-                icon: const Icon(Icons.cloud_upload_rounded),
-                label: const Text('Mulai Cadangkan Foto'),
-              ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 

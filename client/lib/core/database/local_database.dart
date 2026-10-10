@@ -126,7 +126,7 @@ class LocalDatabase {
     );
   }
 
-  Future<void> markSyncedByAssetId(String assetId, {int serverId = 0, String? hash}) async {
+  Future<void> markSyncedByAssetId(String assetId, {int serverId = 0, String? hash, int fileSize = 0}) async {
     final db = await database;
     final count = await db.update(
       'synced_assets',
@@ -135,12 +135,13 @@ class LocalDatabase {
         'server_id': serverId,
         'synced_at': DateTime.now().toIso8601String(),
         'last_error': null,
+        if (fileSize > 0) 'file_size': fileSize,
       },
       where: 'asset_id = ?',
       whereArgs: [assetId],
     );
     if (count == 0) {
-      await markAssetSynced(assetId, hash ?? '', serverId: serverId);
+      await markAssetSynced(assetId, hash ?? '', serverId: serverId, fileSize: fileSize);
     }
   }
 
@@ -162,7 +163,7 @@ class LocalDatabase {
     return map;
   }
 
-  Future<void> markAssetSynced(String assetId, String hash, {int serverId = 0}) async {
+  Future<void> markAssetSynced(String assetId, String hash, {int serverId = 0, int fileSize = 0}) async {
     final db = await database;
     await db.rawInsert('''
       INSERT INTO synced_assets (asset_id, hash, file_name, file_size, mime_type, status, server_id, synced_at, created_at)
@@ -170,18 +171,31 @@ class LocalDatabase {
       ON CONFLICT(asset_id) DO UPDATE SET
         status = excluded.status,
         server_id = excluded.server_id,
-        synced_at = excluded.synced_at
+        synced_at = excluded.synced_at,
+        file_size = CASE WHEN excluded.file_size > 0 THEN excluded.file_size ELSE synced_assets.file_size END
     ''', [
       assetId,
       hash,
       assetId,
-      0,
+      fileSize,
       'unknown',
       SyncStatus.synced.name,
       serverId,
       DateTime.now().toIso8601String(),
       DateTime.now().toIso8601String(),
     ]);
+  }
+
+  Future<int> getSyncedTotalBytes() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT SUM(file_size) as total_bytes FROM synced_assets WHERE status = ?',
+      [SyncStatus.synced.name],
+    );
+    if (result.isNotEmpty && result.first['total_bytes'] != null) {
+      return (result.first['total_bytes'] as num).toInt();
+    }
+    return 0;
   }
 
   Future<Set<String>> getAllSyncedAssetIds() async {

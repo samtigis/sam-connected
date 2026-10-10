@@ -140,8 +140,48 @@ class GalleryController extends ChangeNotifier {
   int get totalCount =>
       _viewMode == GalleryViewMode.device ? _deviceTotalCount : _serverTotalCount;
 
+  int _deviceBackedUpBytes = 0;
+  int get deviceBackedUpBytes => _deviceBackedUpBytes;
+
+  int _serverFreeBytes = 0;
+  int get serverFreeBytes => _serverFreeBytes;
+
+  int _serverTotalDiskBytes = 0;
+  int get serverTotalDiskBytes => _serverTotalDiskBytes;
+
+  Map<String, dynamic>? _serverDiskInfo;
+  Map<String, dynamic>? get serverDiskInfo => _serverDiskInfo;
+
+  int get selectedDeviceBackedUpCount {
+    if (_selectedDeviceId == null) {
+      if (_serverDevices.isNotEmpty) {
+        final total = _serverDevices.fold<int>(0, (sum, d) => sum + ((d['total_media'] as num?)?.toInt() ?? 0));
+        if (total > 0) return total;
+      }
+      return _serverTotalCount;
+    }
+    for (final d in _serverDevices) {
+      if (d['device_id']?.toString() == _selectedDeviceId) {
+        return (d['total_media'] as num?)?.toInt() ?? _serverMedia.length;
+      }
+    }
+    return _serverMedia.length;
+  }
+
+  int get selectedDeviceBackedUpBytes {
+    if (_selectedDeviceId == null) {
+      return _serverDevices.fold<int>(0, (sum, d) => sum + ((d['total_bytes'] as num?)?.toInt() ?? 0));
+    }
+    for (final d in _serverDevices) {
+      if (d['device_id']?.toString() == _selectedDeviceId) {
+        return (d['total_bytes'] as num?)?.toInt() ?? 0;
+      }
+    }
+    return 0;
+  }
+
   int get syncedCount =>
-      _viewMode == GalleryViewMode.device ? _deviceSyncedCount : _serverTotalCount;
+      _viewMode == GalleryViewMode.device ? _deviceSyncedCount : selectedDeviceBackedUpCount;
 
   int get unsyncedCount =>
       _viewMode == GalleryViewMode.device ? _deviceUnsyncedCount : 0;
@@ -225,6 +265,22 @@ class GalleryController extends ChangeNotifier {
       _deviceLabel = await DeviceIdentity.getDeviceLabel();
     } catch (_) {}
 
+    try {
+      final pingRes = await _apiClient.ping();
+      _serverDiskInfo = pingRes;
+      final disk = pingRes['disk'] as Map<String, dynamic>?;
+      if (disk != null) {
+        final free = disk['available_bytes'] ?? disk['free_bytes'];
+        if (free != null) _serverFreeBytes = (free as num).toInt();
+        final total = disk['total_bytes'];
+        if (total != null) _serverTotalDiskBytes = (total as num).toInt();
+      }
+    } catch (_) {}
+
+    try {
+      _serverDevices = await _apiClient.getDevices();
+    } catch (_) {}
+
     if (_viewMode == GalleryViewMode.device) {
       await _fetchDeviceGallery();
     } else {
@@ -259,18 +315,17 @@ class GalleryController extends ChangeNotifier {
         _deviceTotalCount = 0;
         _deviceSyncedCount = 0;
         _deviceUnsyncedCount = 0;
+        _deviceBackedUpBytes = 0;
         notifyListeners();
         return;
       }
 
       final recentAlbum = albums.first;
       final int count = await recentAlbum.assetCountAsync;
-      final int fetchLimit = count > 1000 ? 1000 : count;
 
-      final List<AssetEntity> rawAssets = await recentAlbum.getAssetListPaged(
-        page: 0,
-        size: fetchLimit,
-      );
+      final List<AssetEntity> rawAssets = count > 0
+          ? await recentAlbum.getAssetListRange(start: 0, end: count)
+          : [];
 
       // Fetch all synced IDs from local database
       final syncedAssetIds = await _localDb.getAllSyncedAssetIds();
@@ -297,6 +352,21 @@ class GalleryController extends ChangeNotifier {
       _deviceTotalCount = items.length;
       _deviceSyncedCount = synced;
       _deviceUnsyncedCount = unsynced;
+
+      // Refresh backed up bytes for local device
+      try {
+        final myDevId = await DeviceIdentity.getDeviceId();
+        int srvBytes = 0;
+        for (final dev in _serverDevices) {
+          if (dev['device_id']?.toString() == myDevId) {
+            srvBytes = (dev['total_bytes'] as num?)?.toInt() ?? 0;
+            break;
+          }
+        }
+        final localDbBytes = await _localDb.getSyncedTotalBytes();
+        _deviceBackedUpBytes = srvBytes > 0 ? srvBytes : localDbBytes;
+      } catch (_) {}
+
       _rebuildDeviceTimeline();
       _isLoading = false;
       notifyListeners();
@@ -490,6 +560,7 @@ class GalleryController extends ChangeNotifier {
     try {
       final File? file = await item.localEntity!.originFile ?? await item.localEntity!.file;
       if (file == null || !await file.exists()) return false;
+      final int fileSize = await file.length();
 
       final String hash = await SmartHasher.computeHash(file, isVideo: item.isVideo);
       final String deviceId = await DeviceIdentity.getDeviceId();
@@ -543,13 +614,15 @@ class GalleryController extends ChangeNotifier {
       final String finalHash = (mediaInfo?['hash'] as String?) ?? hash;
 
       await _localDb.markSynced(finalHash, serverId);
-      await _localDb.markSyncedByAssetId(item.id, serverId: serverId, hash: finalHash);
+      await _localDb.markSyncedByAssetId(item.id, serverId: serverId, hash: finalHash, fileSize: fileSize);
 
       // Update in-memory item state to backed up (green checkmark)
       final idx = _deviceMedia.indexWhere((m) => m.id == item.id);
       if (idx != -1) {
         _deviceMedia[idx] = _deviceMedia[idx].copyWith(isSynced: true, hash: finalHash);
         _deviceSyncedCount++;
+        _deviceBackedUpBytes += fileSize;
+        if (_serverFreeBytes >= fileSize) _serverFreeBytes -= fileSize;
         if (_deviceUnsyncedCount > 0) _deviceUnsyncedCount--;
         _rebuildDeviceTimeline();
         notifyListeners();

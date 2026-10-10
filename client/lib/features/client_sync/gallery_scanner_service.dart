@@ -41,7 +41,7 @@ class GalleryScannerService extends ChangeNotifier {
 
   /// Scans gallery and extracts candidates that are not yet synced
   Future<List<LocalScannedAsset>> scanForUnsyncedAssets({
-    int maxAssets = 500,
+    int maxAssets = 50000,
     void Function(int current, int total)? onProgress,
   }) async {
     _isScanning = true;

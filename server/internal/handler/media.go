@@ -137,8 +137,15 @@ func (h *MediaHandler) GetTimeline(c *fiber.Ctx) error {
 		query = query.Where("is_favorite = ?", true)
 	}
 
+	limit := 50000
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
 	var allItems []database.Media
-	if err := query.Order("created_at DESC").Limit(500).Find(&allItems).Error; err != nil {
+	if err := query.Order("created_at DESC").Limit(limit).Find(&allItems).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to query media timeline",
 		})
