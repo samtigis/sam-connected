@@ -622,13 +622,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       children: [
                         Icon(
                           ctrl.viewMode == GalleryViewMode.device
-                              ? Icons.phone_iphone_rounded
+                              ? (ctrl.deviceLabel.toLowerCase().contains('ipad')
+                                  ? Icons.tablet_mac_rounded
+                                  : Icons.phone_iphone_rounded)
                               : Icons.dns_rounded,
                           size: 22,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          ctrl.viewMode == GalleryViewMode.device ? 'Galeri iPhone' : 'Galeri Server',
+                          ctrl.viewMode == GalleryViewMode.device ? 'Galeri ${ctrl.deviceLabel}' : 'Galeri Server',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ],
@@ -669,13 +671,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       child: SizedBox(
                         width: double.infinity,
                         child: SegmentedButton<GalleryViewMode>(
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: GalleryViewMode.device,
-                              label: Text('Galeri Perangkat'),
-                              icon: Icon(Icons.phone_iphone_rounded, size: 16),
+                              label: const Text('Galeri Perangkat'),
+                              icon: Icon(
+                                ctrl.deviceLabel.toLowerCase().contains('ipad')
+                                    ? Icons.tablet_mac_rounded
+                                    : Icons.phone_iphone_rounded,
+                                size: 16,
+                              ),
                             ),
-                            ButtonSegment(
+                            const ButtonSegment(
                               value: GalleryViewMode.server,
                               label: Text('Galeri Server'),
                               icon: Icon(Icons.cloud_done_rounded, size: 16),
@@ -1407,8 +1414,8 @@ class _GalleryScreenState extends State<GalleryScreen> {
             const SizedBox(height: 8),
             Text(
               isDevice
-                  ? 'Foto dan video dari kamera iPhone Anda akan muncul rapi di sini.'
-                  : 'Cadangkan foto dari iPhone Anda untuk menyimpannya di host server MacBook / Windows.',
+                  ? 'Foto dan video dari kamera ${ctrl.deviceLabel} Anda akan muncul rapi di sini.'
+                  : 'Cadangkan foto dari ${ctrl.deviceLabel} Anda untuk menyimpannya di host server MacBook / Windows.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.outline),
             ),

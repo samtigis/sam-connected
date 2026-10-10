@@ -196,7 +196,11 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
                   item.localEntity != null
                       ? 'Tersimpan di Galeri Perangkat'
                       : 'Belum Ada di Galeri (dapat ditarik)',
-                  item.localEntity != null ? Icons.phone_iphone_rounded : Icons.phonelink_erase_rounded,
+                  item.localEntity != null
+                      ? (widget.controller.deviceLabel.toLowerCase().contains('ipad')
+                          ? Icons.tablet_mac_rounded
+                          : Icons.phone_iphone_rounded)
+                      : Icons.phonelink_erase_rounded,
                   highlightColor: item.localEntity != null ? const Color(0xFF16A34A) : const Color(0xFF6B7280),
                 ),
                 _buildInfoRow(

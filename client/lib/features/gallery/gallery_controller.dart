@@ -80,6 +80,8 @@ class GalleryController extends ChangeNotifier {
   GalleryViewMode _viewMode = GalleryViewMode.device;
   GalleryFilter _currentFilter = GalleryFilter.all;
   String _searchQuery = '';
+  String _deviceLabel = 'Perangkat';
+  String get deviceLabel => _deviceLabel;
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -218,6 +220,10 @@ class GalleryController extends ChangeNotifier {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
+
+    try {
+      _deviceLabel = await DeviceIdentity.getDeviceLabel();
+    } catch (_) {}
 
     if (_viewMode == GalleryViewMode.device) {
       await _fetchDeviceGallery();
