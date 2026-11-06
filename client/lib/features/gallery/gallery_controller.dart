@@ -7,6 +7,7 @@ import '../../core/models/gallery_media_item.dart';
 import '../../core/models/media_item.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/device_identity.dart';
+import '../../core/utils/storage_cleaner.dart';
 import '../../core/utils/transfer_speed_tracker.dart';
 import '../client_sync/smart_hasher.dart';
 
@@ -557,15 +558,16 @@ class GalleryController extends ChangeNotifier {
   }) async {
     if (item.isSynced || item.localEntity == null) return true;
 
+    File? file;
+    File? thumbFile;
     try {
-      final File? file = await item.localEntity!.originFile ?? await item.localEntity!.file;
+      file = await item.localEntity!.originFile ?? await item.localEntity!.file;
       if (file == null || !await file.exists()) return false;
       final int fileSize = await file.length();
 
       final String hash = await SmartHasher.computeHash(file, isVideo: item.isVideo);
       final String deviceId = await DeviceIdentity.getDeviceId();
 
-      File? thumbFile;
       if (item.isVideo) {
         try {
           final thumbBytes = await item.localEntity!.thumbnailDataWithSize(const ThumbnailSize(400, 400));
@@ -580,34 +582,25 @@ class GalleryController extends ChangeNotifier {
       }
 
       final speedTracker = TransferSpeedTracker();
-      Map<String, dynamic> uploadRes;
-      try {
-        uploadRes = await _apiClient.upload(
-          file: file,
-          deviceId: deviceId,
-          clientHash: hash,
-          takenAt: item.createDateTime,
-          width: item.width > 0 ? item.width : null,
-          height: item.height > 0 ? item.height : null,
-          duration: item.isVideo && item.videoDuration.inSeconds > 0
-              ? item.videoDuration.inSeconds.toDouble()
-              : null,
-          thumbnailFile: thumbFile,
-          onSendProgress: (sent, total) {
-            if (total > 0 && onProgress != null) {
-              speedTracker.update(sent);
-              final p = sent / total;
-              onProgress(p, speedTracker.formattedSpeed);
-            }
-          },
-        );
-      } finally {
-        if (thumbFile != null && await thumbFile.exists()) {
-          try {
-            await thumbFile.delete();
-          } catch (_) {}
-        }
-      }
+      final uploadRes = await _apiClient.upload(
+        file: file,
+        deviceId: deviceId,
+        clientHash: hash,
+        takenAt: item.createDateTime,
+        width: item.width > 0 ? item.width : null,
+        height: item.height > 0 ? item.height : null,
+        duration: item.isVideo && item.videoDuration.inSeconds > 0
+            ? item.videoDuration.inSeconds.toDouble()
+            : null,
+        thumbnailFile: thumbFile,
+        onSendProgress: (sent, total) {
+          if (total > 0 && onProgress != null) {
+            speedTracker.update(sent);
+            final p = sent / total;
+            onProgress(p, speedTracker.formattedSpeed);
+          }
+        },
+      );
 
       final mediaInfo = uploadRes['media'] as Map<String, dynamic>?;
       final int serverId = (mediaInfo?['id'] as int?) ?? 0;
@@ -631,6 +624,17 @@ class GalleryController extends ChangeNotifier {
     } catch (e) {
       debugPrint('[GalleryController] Backup single asset error: $e');
       return false;
+    } finally {
+      if (thumbFile != null && await thumbFile.exists()) {
+        try {
+          await thumbFile.delete();
+        } catch (_) {}
+      }
+      if (Platform.isIOS && file != null) {
+        try {
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      }
     }
   }
 
@@ -660,42 +664,47 @@ class GalleryController extends ChangeNotifier {
     );
     notifyListeners();
 
-    for (int i = 0; i < total; i++) {
-      if ((isCancelled != null && isCancelled()) || _cancelTaskRequested) break;
+    try {
+      for (int i = 0; i < total; i++) {
+        if ((isCancelled != null && isCancelled()) || _cancelTaskRequested) break;
 
-      final item = toBackup[i];
-      final overallP = i / total;
+        final item = toBackup[i];
+        final overallP = i / total;
 
-      _activeTask = _activeTask.copyWith(
-        current: i + 1,
-        total: total,
-        title: item.title,
-        overallProgress: overallP,
-        itemProgress: 0.0,
-      );
-      notifyListeners();
-      onProgress?.call(i + 1, total, item.title, 0.0, '0 KB/s');
+        _activeTask = _activeTask.copyWith(
+          current: i + 1,
+          total: total,
+          title: item.title,
+          overallProgress: overallP,
+          itemProgress: 0.0,
+        );
+        notifyListeners();
+        onProgress?.call(i + 1, total, item.title, 0.0, '0 KB/s');
 
-      final ok = await backupSingleAsset(
-        item,
-        onProgress: (itemP, speed) {
-          final liveOverall = (i + itemP) / total;
-          _activeTask = _activeTask.copyWith(
-            itemProgress: itemP,
-            overallProgress: liveOverall,
-            speed: speed,
-          );
-          notifyListeners();
-          onProgress?.call(i + 1, total, item.title, itemP, speed);
-        },
-      );
-      if (ok) {
-        successCount++;
+        final ok = await backupSingleAsset(
+          item,
+          onProgress: (itemP, speed) {
+            final liveOverall = (i + itemP) / total;
+            _activeTask = _activeTask.copyWith(
+              itemProgress: itemP,
+              overallProgress: liveOverall,
+              speed: speed,
+            );
+            notifyListeners();
+            onProgress?.call(i + 1, total, item.title, itemP, speed);
+          },
+        );
+        if (ok) {
+          successCount++;
+        }
       }
+    } finally {
+      _activeTask = const ActiveTaskState();
+      if (Platform.isIOS) {
+        await StorageCleaner.clearAllCaches();
+      }
+      notifyListeners();
     }
-
-    _activeTask = const ActiveTaskState();
-    notifyListeners();
 
     return successCount;
   }
@@ -825,41 +834,46 @@ class GalleryController extends ChangeNotifier {
     );
     notifyListeners();
 
-    for (int i = 0; i < total; i++) {
-      if ((isCancelled != null && isCancelled()) || _cancelTaskRequested) break;
-      final item = toPull[i];
+    try {
+      for (int i = 0; i < total; i++) {
+        if ((isCancelled != null && isCancelled()) || _cancelTaskRequested) break;
+        final item = toPull[i];
 
-      final overallP = i / total;
-      _activeTask = _activeTask.copyWith(
-        current: i + 1,
-        total: total,
-        title: item.title,
-        overallProgress: overallP,
-        itemProgress: 0.0,
-      );
-      notifyListeners();
-      onProgress?.call(i + 1, total, item.title, 0.0, '0 KB/s');
+        final overallP = i / total;
+        _activeTask = _activeTask.copyWith(
+          current: i + 1,
+          total: total,
+          title: item.title,
+          overallProgress: overallP,
+          itemProgress: 0.0,
+        );
+        notifyListeners();
+        onProgress?.call(i + 1, total, item.title, 0.0, '0 KB/s');
 
-      final ok = await pullMediaToGallery(
-        item,
-        onProgress: (itemP, speed) {
-          final liveOverall = (i + itemP) / total;
-          _activeTask = _activeTask.copyWith(
-            itemProgress: itemP,
-            overallProgress: liveOverall,
-            speed: speed,
-          );
-          notifyListeners();
-          onProgress?.call(i + 1, total, item.title, itemP, speed);
-        },
-      );
-      if (ok) {
-        successCount++;
+        final ok = await pullMediaToGallery(
+          item,
+          onProgress: (itemP, speed) {
+            final liveOverall = (i + itemP) / total;
+            _activeTask = _activeTask.copyWith(
+              itemProgress: itemP,
+              overallProgress: liveOverall,
+              speed: speed,
+            );
+            notifyListeners();
+            onProgress?.call(i + 1, total, item.title, itemP, speed);
+          },
+        );
+        if (ok) {
+          successCount++;
+        }
       }
+    } finally {
+      _activeTask = const ActiveTaskState();
+      if (Platform.isIOS) {
+        await StorageCleaner.clearAllCaches();
+      }
+      notifyListeners();
     }
-
-    _activeTask = const ActiveTaskState();
-    notifyListeners();
 
     return successCount;
   }

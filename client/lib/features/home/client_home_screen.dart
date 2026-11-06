@@ -7,6 +7,7 @@ import '../client_sync/client_sync_screen.dart';
 import '../client_sync/gallery_scanner_service.dart';
 import '../client_sync/sync_coordinator.dart';
 import '../common/transfer_notification_banner.dart';
+import '../../core/utils/storage_cleaner.dart';
 import '../gallery/gallery_controller.dart';
 import '../gallery/gallery_screen.dart';
 import '../settings/sync_settings_screen.dart';
@@ -63,8 +64,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> with WidgetsBinding
     // Refresh gallery sync indicators whenever sync finishes
     _syncCoordinator.addListener(_onSyncCoordinatorUpdate);
 
-    // Trigger auto-sync and start observer after first frame
+    // Trigger auto-sync, purge any old leftover iOS export cache, and start observer
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      StorageCleaner.clearAllCaches();
       _autoSyncService.onAppResume();
       _galleryController.fetchGallery();
       _autoSyncService.startPhotoChangeObserver();

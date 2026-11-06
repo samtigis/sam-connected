@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/discovery_service.dart';
+import '../../core/utils/storage_cleaner.dart';
 import '../client_sync/auto_sync_service.dart';
 import '../client_sync/widgets/server_connection_card.dart';
 
@@ -26,16 +27,48 @@ class SyncSettingsScreen extends StatefulWidget {
 }
 
 class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
+  int _cacheSizeBytes = 0;
+  bool _isCleaningCache = false;
+
   @override
   void initState() {
     super.initState();
     widget.autoSyncService.addListener(_onServiceUpdate);
+    _loadCacheSize();
   }
 
   @override
   void dispose() {
     widget.autoSyncService.removeListener(_onServiceUpdate);
     super.dispose();
+  }
+
+  Future<void> _loadCacheSize() async {
+    final size = await StorageCleaner.getCacheSize();
+    if (mounted) setState(() => _cacheSizeBytes = size);
+  }
+
+  Future<void> _cleanCache() async {
+    setState(() => _isCleaningCache = true);
+    final freed = await StorageCleaner.clearAllCaches();
+    await _loadCacheSize();
+    if (mounted) {
+      setState(() => _isCleaningCache = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cache dibersihkan (${_formatBytes(freed)} dibebaskan)'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   void _onServiceUpdate() {
@@ -255,6 +288,80 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
                 onTap: _showEditServerDialog,
               ),
             ),
+          const SizedBox(height: 24),
+
+          // Cache Storage Section
+          Text(
+            'PENYIMPANAN & CACHE',
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.5)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Cache Sementara Perangkat',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatBytes(_cacheSizeBytes),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isCleaningCache ? null : _cleanCache,
+                        icon: _isCleaningCache
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.cleaning_services_outlined, size: 16),
+                        label: Text(_isCleaningCache ? 'Membersihkan...' : 'Bersihkan'),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'File foto dan video sementara dibersihkan otomatis setelah diunggah ke server agar memori perangkat tetap hemat.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

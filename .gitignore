@@ -11,6 +11,8 @@ storage/
 # Build artifacts
 client/build/
 .dart_tool/
+dist/
+*.ipa
 *.old
 *.running
-*_old.exe
+*.exe

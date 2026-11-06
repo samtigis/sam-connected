@@ -104,7 +104,7 @@ go run ./cmd/api -port 8080 -storage ~/Documents/SamBackup
 cd client
 flutter run -d <device_or_simulator_id>
 ```
-*(Untuk iOS: buka file `client/ios/Runner.xcworkspace` di Xcode dan tekan Run).*
+*(Untuk iOS: buka file `client/ios/Runner.xcworkspace` di Xcode dan tekan Run, atau gunakan AltStore agar aktif tanpa kedaluwarsa via `./build_ipa.sh`. Lihat [ALTSTORE_SETUP.md](ALTSTORE_SETUP.md)).*
 
 2. Pada onboarding, pilih **Mode Client / Uploader**.
 3. Aplikasi akan mendeteksi server secara otomatis via mDNS atau Anda dapat memasukkan alamat server (misal: `http://<IP_PC_WINDOWS>:8080/api/v1`).

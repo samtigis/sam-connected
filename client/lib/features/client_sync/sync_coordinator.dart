@@ -6,6 +6,7 @@ import '../../core/database/local_database.dart';
 import '../../core/network/api_client.dart';
 import '../../core/platform/background_task_manager.dart';
 import '../../core/utils/device_identity.dart';
+import '../../core/utils/storage_cleaner.dart';
 import '../../core/utils/transfer_speed_tracker.dart';
 import 'gallery_scanner_service.dart';
 
@@ -240,7 +241,7 @@ class SyncCoordinator extends ChangeNotifier {
         }
 
         final item = assetsToUpload[i];
-        final fileName = item.entity.title ?? item.file.path.split(Platform.pathSeparator).last;
+        final fileName = item.entity.title ?? 'media_${item.entity.id}';
 
         _state = _state.copyWith(
           currentFileName: fileName,
@@ -249,24 +250,33 @@ class SyncCoordinator extends ChangeNotifier {
         );
         notifyListeners();
 
+        File? fileToUpload;
         File? thumbFile;
         try {
-          final thumbBytes = await item.entity.thumbnailDataWithSize(
-            const ThumbnailSize(500, 500),
-            quality: 85,
-          );
-          if (thumbBytes != null && thumbBytes.isNotEmpty) {
-            final tempDir = await getTemporaryDirectory();
-            final tFile = File('${tempDir.path}/thumb_${item.hash}.jpg');
-            await tFile.writeAsBytes(thumbBytes);
-            thumbFile = tFile;
+          fileToUpload = await item.entity.originFile ?? await item.entity.file;
+          if (fileToUpload == null || !await fileToUpload.exists()) {
+            errors++;
+            continue;
           }
-        } catch (_) {}
 
-        final speedTracker = TransferSpeedTracker();
-        try {
+          if (item.entity.type == AssetType.video) {
+            try {
+              final thumbBytes = await item.entity.thumbnailDataWithSize(
+                const ThumbnailSize(500, 500),
+                quality: 85,
+              );
+              if (thumbBytes != null && thumbBytes.isNotEmpty) {
+                final tempDir = await getTemporaryDirectory();
+                final tFile = File('${tempDir.path}/thumb_${item.hash}.jpg');
+                await tFile.writeAsBytes(thumbBytes);
+                thumbFile = tFile;
+              }
+            } catch (_) {}
+          }
+
+          final speedTracker = TransferSpeedTracker();
           final uploadRes = await apiClient.upload(
-            file: item.file,
+            file: fileToUpload,
             deviceId: deviceId,
             clientHash: item.hash,
             takenAt: item.entity.createDateTime,
@@ -293,7 +303,7 @@ class SyncCoordinator extends ChangeNotifier {
           final int serverId = (mediaInfo?['id'] as int?) ?? 0;
 
           await localDb.markSynced(item.hash, serverId);
-          await localDb.markSyncedByAssetId(item.entity.id, serverId: serverId);
+          await localDb.markSyncedByAssetId(item.entity.id, serverId: serverId, fileSize: item.fileSize);
           uploaded++;
           _log('Sukses mencadangkan: $fileName');
 
@@ -312,6 +322,11 @@ class SyncCoordinator extends ChangeNotifier {
           if (thumbFile != null && await thumbFile.exists()) {
             try {
               await thumbFile.delete();
+            } catch (_) {}
+          }
+          if (Platform.isIOS && fileToUpload != null) {
+            try {
+              if (await fileToUpload.exists()) await fileToUpload.delete();
             } catch (_) {}
           }
         }
@@ -334,6 +349,9 @@ class SyncCoordinator extends ChangeNotifier {
     } finally {
       await BackgroundTaskManager.setKeepScreenOn(false);
       await BackgroundTaskManager.endBackgroundTask();
+      if (Platform.isIOS) {
+        await StorageCleaner.clearAllCaches();
+      }
     }
   }
 }
